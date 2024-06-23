@@ -1,0 +1,27 @@
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { StatusBar } from 'expo-status-bar';
+
+// Screens
+import ConfigScreen from './screens/Config/ConfigScreen';
+
+// Navigation
+const Stack = createNativeStackNavigator();
+
+import TabNavigator from './TabNavigator';
+function TabScreen() { return <TabNavigator />; }
+
+export default function StackNavigator() {
+    return (
+        <NavigationContainer>
+            <Stack.Navigator initialRouteName='TabScreen' screenOptions={({ route }) => ({
+                headerStyle: { backgroundColor: '#2C2C2C' },
+                headerTitleStyle: { color: '#fff' }
+            })}>
+                <Stack.Screen name="TabScreen" component={TabScreen} options={{ headerShown: false }} />
+                <Stack.Screen name="Config" component={ConfigScreen} options={{ title: "Config", animation: 'slide_from_right' }} />
+            </Stack.Navigator>
+            <StatusBar style="auto" />
+        </NavigationContainer>
+    );
+}
