@@ -5,6 +5,7 @@
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
+    "android-emulate": "powershell -ExecutionPolicy Bypass -File ./android.ps1",
     "ios": "expo start --ios",
     "web": "expo start --web"
   },
@@ -18,8 +19,9 @@
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "react-native": "0.73.6",
-    "react-native-table-component": "^1.2.2",
-    "react-native-web": "~0.19.6"
+    "react-native-responsive-fontsize": "^0.5.1",
+    "react-native-web": "~0.19.6",
+    "styled-components": "^6.1.12"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0"
