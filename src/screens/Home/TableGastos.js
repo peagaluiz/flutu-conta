@@ -1,6 +1,9 @@
 import { Component } from 'react';
-import { StyleSheet, View, Text, SafeAreaView, FlatList } from 'react-native';
+import { StyleSheet, View, FlatList } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+
+// Components
+import { Text } from '../../../components/text';
 
 export default class TableGastos extends Component {
     constructor(props) {
@@ -63,17 +66,17 @@ export default class TableGastos extends Component {
         const Row = ({ item }) => (
             <View style={{ flexDirection: 'row', padding: 15, width: '100%' }}>
                 <Ionicons name={item.icon} size={18.2} color='white' style={{ textAlign: 'center', width: '20%' }} />
-                <Text style={{ color: 'white', textAlign: 'center', width: '40%' }}>{item.date}</ Text>
-                <Text style={{ color: 'white', textAlign: 'right', width: '40%' }}>{item.qtde}</ Text>
+                <Text style={{ width: '40%' }} align="center" shadow={true}>{item.date}</ Text>
+                <Text style={{ width: '40%' }} align="right" shadow={true}>{item.qtde}</ Text>
             </View>
         );;
 
         return (
             <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', padding: 15, width: '100%' }}>
-                    <Text style={[{ color: 'white', textAlign: 'center', width: '20%' }, styles.shadowText]} >Tipo</ Text>
-                    <Text style={[{ color: 'white', textAlign: 'center', width: '40%' }, styles.shadowText]}>Data</ Text>
-                    <Text style={[{ color: 'white', textAlign: 'right', width: '40%' }, styles.shadowText]}>Qtde</ Text>
+                    <Text style={[{ color: 'white', textAlign: 'center', width: '20%' }]} shadow={true} >Tipo</ Text>
+                    <Text style={[{ color: 'white', textAlign: 'center', width: '40%' }]} shadow={true}>Data</ Text>
+                    <Text style={[{ color: 'white', textAlign: 'right', width: '40%' }]} shadow={true} >Qtde</ Text>
                 </View>
                 <FlatList showsVerticalScrollIndicator={false} data={state.tableData} renderItem={Row} style={styles.table} />
             </View >

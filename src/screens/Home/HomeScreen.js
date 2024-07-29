@@ -1,11 +1,13 @@
-import { StyleSheet, Text, View, ScrollView, SafeAreaView, TouchableOpacity } from 'react-native';
+import { StyleSheet, TouchableOpacity } from 'react-native';
 import { RFPercentage } from "react-native-responsive-fontsize";
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 // Components
 import CircleButton from '../../../components/circleButton';
-import { Panel, PanelTitle, PanelText, PanelSubText } from '../../../components/panel';
-import { Container, Row, Hr } from './styles';
+import { Panel } from '../../../components/panel';
+import { Title, PanelText, PanelSubText } from '../../../components/text';
+import { Row, Hr } from '../../../components/row';
+import { Container } from '../../../components/container';
 import TableGastos from './TableGastos';
 
 export default function Home({ navigation }) {
@@ -15,7 +17,7 @@ export default function Home({ navigation }) {
             <Row style={{ justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
                 <TouchableOpacity style={{ width: '50%', flexDirection: 'row', alignItems: 'center', gap: 10 }} onPress={() => { navigation.navigate('Profile') }}>
                     <Ionicons name="person-circle-outline" size={30} color="white" />
-                    <PanelTitle color="white" align="center">Bem vindo {this.username}!</PanelTitle>
+                    <Title color="white" align="center">Bem vindo {this.username}!</Title>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => { navigation.navigate('Config') }}>
                     <Ionicons name="cog" size={30} color="white" />
@@ -23,11 +25,11 @@ export default function Home({ navigation }) {
             </Row>
             <Row>
                 <Panel>
-                    <PanelTitle>Saldo em Conta</PanelTitle>
+                    <Title>Saldo em Conta</Title>
                     <PanelText>R$ 1.120,00</PanelText>
                     <PanelSubText>R$ 791,58</PanelSubText>
                     <Hr />
-                    <PanelTitle>Despesas Pendentes</PanelTitle>
+                    <Title>Despesas Pendentes</Title>
                     <PanelText>R$ 540,50</PanelText>
                     <PanelSubText>R$ 579,50</PanelSubText>
                 </Panel>
@@ -39,22 +41,10 @@ export default function Home({ navigation }) {
             </Row>
             <Row style={{ flex: 1 }}>
                 <Panel>
-                    <Text style={[styles.panelTitle, { alignSelf: 'flex-start', marginBottom: 5 }]}>Visão geral</Text>
+                    <Title>Visão geral</Title>
                     <TableGastos />
                 </Panel>
             </Row>
         </Container>
     );
 }
-
-const styles = StyleSheet.create({
-    panelTitle: {
-        fontSize: RFPercentage(2),
-        color: '#6184FF'
-    },
-    shadowText: {
-        textShadowColor: "#000",
-        textShadowOffset: { width: -1, height: 1 },
-        textShadowRadius: 1
-    }
-});

@@ -5,10 +5,10 @@ const Button = styled.TouchableOpacity`
     flex: 1;
     height: 50px;
     borderRadius: 40px;
-    backgroundColor: ${props => props.color ? props.color : "#4B4B4B"};
+    backgroundColor: ${({ theme }) => theme.colors.dark.secondary};
     alignItems: center;
     justifyContent: center;
-    borderColor: ${props => props.borderColor ? props.borderColor : "#2C2C2C"};
+    borderColor: ${({ theme }) => theme.colors.dark.border};
     borderBottomWidth: 5px;
     borderRightWidth: 5px;
     borderLeftWidth: 5px;
