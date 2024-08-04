@@ -1,6 +1,6 @@
 import { StyleSheet, View, Button } from 'react-native';
 
-export default function ConfigScreen() {
+export default function ConfigScreen({ navigation }) {
     return (
         <View style={styles.container}>
             <View style={[styles.row, { justifyContent: 'space-between', width: '100%', alignItems: 'center' }]}>

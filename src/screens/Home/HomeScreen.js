@@ -1,5 +1,4 @@
-import { StyleSheet, TouchableOpacity } from 'react-native';
-import { RFPercentage } from "react-native-responsive-fontsize";
+import { TouchableOpacity } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 // Components
@@ -11,13 +10,12 @@ import { Container } from '../../../components/container';
 import TableGastos from './TableGastos';
 
 export default function Home({ navigation }) {
-
     return (
         <Container>
             <Row style={{ justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
                 <TouchableOpacity style={{ width: '50%', flexDirection: 'row', alignItems: 'center', gap: 10 }} onPress={() => { navigation.navigate('Profile') }}>
                     <Ionicons name="person-circle-outline" size={30} color="white" />
-                    <Title color="white" align="center">Bem vindo {this.username}!</Title>
+                    <Title color="white" align="center">Bem vindo LUIZ!</Title>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => { navigation.navigate('Config') }}>
                     <Ionicons name="cog" size={30} color="white" />
@@ -25,11 +23,11 @@ export default function Home({ navigation }) {
             </Row>
             <Row>
                 <Panel>
-                    <Title>Saldo em Conta</Title>
+                    <Title font="roboto">Saldo em Conta</Title>
                     <PanelText>R$ 1.120,00</PanelText>
                     <PanelSubText>R$ 791,58</PanelSubText>
                     <Hr />
-                    <Title>Despesas Pendentes</Title>
+                    <Title font="roboto">Despesas Pendentes</Title>
                     <PanelText>R$ 540,50</PanelText>
                     <PanelSubText>R$ 579,50</PanelSubText>
                 </Panel>
@@ -41,7 +39,7 @@ export default function Home({ navigation }) {
             </Row>
             <Row style={{ flex: 1 }}>
                 <Panel>
-                    <Title>Visão geral</Title>
+                    <Title font="roboto">Visão geral</Title>
                     <TableGastos />
                 </Panel>
             </Row>

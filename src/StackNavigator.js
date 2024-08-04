@@ -18,7 +18,7 @@ export default function StackNavigator() {
                 headerStyle: { backgroundColor: '#2C2C2C' },
                 headerTitleStyle: { color: '#fff' }
             })}>
-                <Stack.Screen name="TabScreen" component={TabScreen} options={{ headerShown: false }} />
+                <Stack.Screen name="TabScreen" component={TabScreen} options={{ headerShown: false, animation: 'fade' }} />
                 <Stack.Screen name="Config" component={ConfigScreen} options={{ title: "Config", animation: 'slide_from_right' }} />
             </Stack.Navigator>
             <StatusBar style="auto" />
