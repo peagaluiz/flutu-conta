@@ -3,4 +3,4 @@ Set-Location -Path '' # Caminho para a pasta emulator, geralmente em 'Appdata\Lo
 Start-Process -FilePath './emulator' -ArgumentList '-avd [AVD NAME]' -NoNewWindow # Troque [AVD NAME] pelo nome da sua AVD, você pode chegcar executando o comando '/.emulator --list-avds'
 Start-Sleep -Seconds 10
 Set-Location -Path $originalDir
-expo start --android
+expo run:android

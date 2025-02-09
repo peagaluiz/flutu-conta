@@ -1,4 +1,9 @@
-import { StyleSheet, Text, View, Image } from 'react-native';
+import { StyleSheet, Image, View, Text, ScrollView } from 'react-native';
+import { useTheme } from '@rneui/themed';
+
+import { Container } from '../../../components/container';
+import { Panel } from '../../../components/panel';
+import { Title } from '../../../components/text';
 
 // Temporário / Fazer pesquisa no banco de dados futuramente
 const search = {
@@ -7,22 +12,61 @@ const search = {
 }
 
 export default function ProfileScreen({ navigation }) {
+    const { theme } = useTheme();
+
     return (
-        <View style={styles.container}>
-            <View style={styles.panel}>
-                <Image style={styles.avatar} source={require(`../../../assets/avatar.jpg`)} />
-                <View style={styles.body}>
-                    <View style={styles.bodyContent}>
-                        <Text style={styles.name}>{search.userName}</Text>
-                        <Text style={styles.info}>{search.info}</Text>
-                        <Text style={styles.description}>
-                            Lorem ipsum dolor sit amet, saepe sapientem eu nam. Qui ne assum electram expetendis,
-                            omittam deseruisse consequuntur ius an,
-                        </Text>
+        <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
+            <Container gap={10}>
+                <Panel>
+                    <Image style={styles.avatar} source={require(`../../../assets/avatar.jpg`)} />
+                    <View style={styles.body}>
+                        <View style={styles.bodyContent}>
+                            <Text style={styles.name}>{search.userName}</Text>
+                            <Text style={styles.info}>{search.info}</Text>
+                            <Text style={styles.description}>
+                                Lorem ipsum dolor sit amet, saepe sapientem eu nam. Qui ne assum electram expetendis,
+                                omittam deseruisse consequuntur ius an,
+                            </Text>
+                        </View>
                     </View>
-                </View>
-            </View>
-        </View>
+                </Panel>
+
+                <Panel style={{ marginTop: 10 }}>
+                    <Title>
+                        Lorem ipsum dolor sit amet, saepe sapientem eu nam. Qui ne assum electram expetendis,
+                        omittam deseruisse consequuntur ius an
+                        Lorem ipsum dolor sit amet, saepe sapientem eu nam. Qui ne assum electram expetendis,
+                        omittam deseruisse consequuntur ius an
+                        Lorem ipsum dolor sit amet, saepe sapientem eu nam. Qui ne assum electram expetendis,
+                        omittam deseruisse consequuntur ius an
+                        Lorem ipsum dolor sit amet, saepe sapientem eu nam. Qui ne assum electram expetendis,
+                        omittam deseruisse consequuntur ius an
+                        Lorem ipsum dolor sit amet, saepe sapientem eu nam. Qui ne assum electram expetendis,
+                        omittam deseruisse consequuntur ius an,
+                        Lorem ipsum dolor sit amet, saepe sapientem eu nam. Qui ne assum electram expetendis,
+                        omittam deseruisse consequuntur ius an
+                        Lorem ipsum dolor sit amet, saepe sapientem eu nam. Qui ne assum electram expetendis,
+                        omittam deseruisse consequuntur ius an
+                        Lorem ipsum dolor sit amet, saepe sapientem eu nam. Qui ne assum electram expetendis,
+                        omittam deseruisse consequuntur ius an
+                        Lorem ipsum dolor sit amet, saepe sapientem eu nam. Qui ne assum electram expetendis,
+                        omittam deseruisse consequuntur ius an
+                        Lorem ipsum dolor sit amet, saepe sapientem eu nam. Qui ne assum electram expetendis,
+                        omittam deseruisse consequuntur ius an,
+                        Lorem ipsum dolor sit amet, saepe sapientem eu nam. Qui ne assum electram expetendis,
+                        omittam deseruisse consequuntur ius an
+                        Lorem ipsum dolor sit amet, saepe sapientem eu nam. Qui ne assum electram expetendis,
+                        omittam deseruisse consequuntur ius an
+                        Lorem ipsum dolor sit amet, saepe sapientem eu nam. Qui ne assum electram expetendis,
+                        omittam deseruisse consequuntur ius an
+                        Lorem ipsum dolor sit amet, saepe sapientem eu nam. Qui ne assum electram expetendis,
+                        omittam deseruisse consequuntur ius an
+                        Lorem ipsum dolor sit amet, saepe sapientem eu nam. Qui ne assum electram expetendis,
+                        omittam deseruisse consequuntur ius an,
+                    </Title>
+                </Panel>
+            </Container>
+        </ScrollView>
     );
 }
 
@@ -52,7 +96,6 @@ const styles = StyleSheet.create({
     name: {
         alignSelf: 'center',
         fontSize: 22,
-        color: '#FFFFFF',
         fontWeight: '600',
     },
     info: {
@@ -63,11 +106,7 @@ const styles = StyleSheet.create({
     },
     description: {
         fontSize: 16,
-        color: '#FFFFFF',
         marginTop: 10,
         textAlign: 'center',
-    },
-    text: {
-        color: '#fff',
-    },
+    }
 });

@@ -1,7 +1,13 @@
 import styled from 'styled-components/native';
+import { useTheme } from '@rneui/themed';
 
-export const Container = styled.View`
+const ContainerWrapper = styled.View`
     flex: 1;
     padding: 20px;
-    backgroundColor: #1E1E1E;
+    backgroundColor: ${({ theme }) => theme.colors.surface};
 `;
+
+export const Container = ({ children, style }) => {
+    const { theme } = useTheme();
+    return <ContainerWrapper theme={theme} style={style}>{children}</ContainerWrapper>;
+}

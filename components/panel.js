@@ -1,16 +1,22 @@
 import styled from 'styled-components/native';
+import { useTheme } from '@rneui/themed';
 
-export const Panel = styled.View`
+const PanelWrapper = styled.View`
     flex: 1;
     width: 100%;
-    borderRadius: 20px;
-    padding: 20px;
-    paddingTop: 10px;
-    backgroundColor: ${({ theme }) => theme.colors.dark.secondary};
-    alignItems: center;
-    justifyContent: center;
-    borderColor: ${({ theme }) => theme.colors.dark.border};
-    borderBottomWidth: 5px;
-    borderRightWidth: 5px;
-    borderLeftWidth: 5px;
+    border-radius: 20px;
+    padding: ${({ nopadding }) => nopadding ? "5px" : "20px"};
+    padding-top: ${({ nopadding }) => nopadding ? "5px" : "10px"};
+    background-color: ${({ theme }) => theme.colors.accent};
+    align-items: center;
+    justify-content: center;
+    border-color: ${({ theme }) => theme.colors.tertiary};
+    border-bottom-width: 5px;
+    border-right-width: 5px;
+    border-left-width: 5px;
 `;
+
+export const Panel = ({ nopadding, children, style }) => {
+    const { theme } = useTheme();
+    return <PanelWrapper theme={theme} nopadding={nopadding} style={style}>{children}</PanelWrapper>;
+};

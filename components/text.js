@@ -1,33 +1,51 @@
 import styled from 'styled-components/native';
 import { RFPercentage } from "react-native-responsive-fontsize";
+import { useTheme } from '@rneui/themed';
 
-export const Title = styled.Text`
+const TitleWrapper = styled.Text`
     fontSize: ${RFPercentage(2)}px;
-    fontFamily: '${({ theme, font }) => font == 'roboto' ? theme.fonts.roboto : theme.fonts.museo}';
-    color: ${({ theme }) => theme.colors.complementary};
+    fontFamily: "Roboto_400Regular";
+    color: ${({ theme }) => theme.colors.flutu};
     alignSelf: ${(props) => props.align ? props.align : "flex-start"};
 `;
-export const Text = styled.Text`
-    color: ${({ theme, color }) => color ? color : theme.colors.dark.text};
+
+export const Title = ({ children, align, color, style }) =>  {
+    const { theme } = useTheme();
+    return <TitleWrapper align={align} color={color} theme={theme} style={style}>{children}</TitleWrapper>
+};
+
+const TextWrapper = styled.Text`
+    color: ${({ theme, color }) => color ? color : theme.colors.text};
     textAlign: ${(props) => props.align ? props.align : "center"};
 `;
-export const PanelText = styled.Text`
+
+export const Text = ({ children, align, color, width, style }) =>  {
+    const { theme } = useTheme();
+    return <TextWrapper align={align} color={color} theme={theme} width={width ?? "auto"} style={style}>{children}</TextWrapper>
+};
+
+const PanelTextWrapper = styled.Text`
     flexWrap: nowrap;
     fontSize: ${({ size }) => size ? size : RFPercentage(2.5)}px;
-    fontFamily: '${({ theme, bold }) => bold ? theme.fonts.roboto700 : theme.fonts.roboto}';
-    color: ${({ theme }) => theme.colors.dark.text};
-    alignSelf: ${({ theme }) => theme.align ? theme.align : "flex-end"};
-    backgroundColor: ${({ theme }) => theme.colors.dark.default};
+    fontFamily: "Roboto_400Regular";
+    color: ${({ theme }) => theme.colors.text};
+    backgroundColor: ${({ theme }) => theme.colors.surface};
     paddingRight: 15px;
     paddingLeft: 15px;
     borderTopLeftRadius: 10px;
     borderTopRightRadius: 10px;
     width: 100%;
-    textAlign: right;
+    textAlign: ${({ align }) => align ? align : "right"};
 `;
-export const PanelSubText = styled.Text`
-    fontSize: ${RFPercentage(1.5)}px;
-    fontFamily: '${({ theme }) => theme.fonts.roboto}';
+
+export const PanelText = ({ children, align, color, style }) =>  {
+    const { theme } = useTheme();
+    return <PanelTextWrapper align={align} color={color} theme={theme} style={style}>{children}</PanelTextWrapper>
+};
+
+const PanelSubTextWrapper = styled.Text`
+    fontSize: ${RFPercentage(1.8)}px;
+    fontFamily: "Roboto_700Bold";
     alignSelf: flex-end;
     color: ${({ theme }) => theme.colors.textSecondary};
     padding: 5px;
@@ -35,7 +53,12 @@ export const PanelSubText = styled.Text`
     paddingLeft: 15px;
     borderBottomLeftRadius: 10px;
     borderBottomRightRadius: 10px;
-    backgroundColor: ${({ theme }) => theme.colors.dark.default};
+    backgroundColor: ${({ theme }) => theme.colors.surface};
     width: 100 %;
     textAlign: right;
 `;
+
+export const PanelSubText = ({ children, align, color, style }) =>  {
+    const { theme } = useTheme();
+    return <PanelSubTextWrapper align={align} color={color} theme={theme} style={style}>{children}</PanelSubTextWrapper>
+};

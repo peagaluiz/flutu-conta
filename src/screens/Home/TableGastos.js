@@ -1,104 +1,86 @@
-import { Component } from 'react';
-import { StyleSheet, View, FlatList } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { View, SafeAreaView } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { Panel } from '../../../components/panel';
+import { Title } from '../../../components/text';
+import { useTheme } from '@rneui/themed';
 
 // Components
 import { Text } from '../../../components/text';
 
-export default class TableGastos extends Component {
-    constructor(props) {
-        super(props);
-
-        this.state = {
-            tableHead: ['Tipo', 'Data', 'Valor'],
-            widthArr: [55, 90, 120],
-            widthArrPerc: ["20%", "40%", "40%"],
-            tableData: [
-                {
-                    "id": 1,
-                    "icon": 'cash',
-                    "date": "15/01/2022",
-                    "qtde": "R$ 1.420,48",
-                },
-                {
-                    "id": 2,
-                    "icon": 'car',
-                    "date": "05/01/2022",
-                    "qtde": "R$ 220,00",
-                },
-                {
-                    "id": 3,
-                    "icon": 'car',
-                    "date": "05/01/2022",
-                    "qtde": "R$ 220,00",
-                },
-                {
-                    "id": 4,
-                    "icon": 'car',
-                    "date": "05/01/2022",
-                    "qtde": "R$ 220,00",
-                },
-                {
-                    "id": 5,
-                    "icon": 'car',
-                    "date": "05/01/2022",
-                    "qtde": "R$ 220,00",
-                },
-                {
-                    "id": 6,
-                    "icon": 'car',
-                    "date": "05/01/2022",
-                    "qtde": "R$ 220,00",
-                },
-                {
-                    "id": 7,
-                    "icon": 'car',
-                    "date": "05/01/2022",
-                    "qtde": "R$ 220,00",
-                }
-            ],
-        }
-    }
-
-    render() {
-        const state = this.state;
-
-        const Row = ({ item }) => (
-            <View style={{ flexDirection: 'row', padding: 15, width: '100%' }}>
-                <Ionicons name={item.icon} size={18.2} color='white' style={{ textAlign: 'center', width: '20%' }} />
-                <Text style={{ width: '40%' }} align="center" shadow={true}>{item.date}</ Text>
-                <Text style={{ width: '40%' }} align="right" shadow={true}>{item.qtde}</ Text>
+const TableGastosConstructor = ({ theme, state }) => {
+    const RowList = ({ item }) => (
+        <View style={{ flexDirection: 'row', paddingHorizontal: 10, paddingVertical: 10, width: '100%' }}>
+            <View style={{ justifyContent: 'center', width: '20%' }}>
+                <MaterialIcons name={item.icon} size={18.2} color={theme.colors.text} />
             </View>
-        );;
 
-        return (
-            <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', padding: 15, width: '100%' }}>
-                    <Text style={[{ color: 'white', textAlign: 'center', width: '20%' }]} shadow={true} >Tipo</ Text>
-                    <Text style={[{ color: 'white', textAlign: 'center', width: '40%' }]} shadow={true}>Data</ Text>
-                    <Text style={[{ color: 'white', textAlign: 'right', width: '40%' }]} shadow={true} >Qtde</ Text>
+            <View style={{ flexDirection: 'column', width: '80%' }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
+                    <Text style={{ width: '50%' }} align="left" shadow={true}>{item.date}</Text>
+                    <Text style={{ width: '50%' }} align="right" shadow={true}>{item.qtde}</Text>
                 </View>
-                <FlatList showsVerticalScrollIndicator={false} data={state.tableData} renderItem={Row} style={styles.table} />
-            </View >
-        );
-    }
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
+                    <Text style={{ width: '50%' }} align="left" shadow={true}>{item.description}</Text>
+                    <Text style={{ width: '50%' }} align="right" shadow={true}>{item.method}</Text>
+                </View>
+            </View>
+        </View>
+    );
+
+    const renderRows = () => {
+        const rows = [];
+        state.tableData.forEach((item, index) => {
+            rows.push(<RowList key={index} item={item} />);
+        });
+        return rows;
+    };
+
+    return (
+        <Panel>
+            <Title style={{ marginBottom: 25 }}>Ultimos lançamentos</Title>
+            <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.surface, borderRadius: 15 }}>
+                <View style={{ borderRadius: 15 }}>
+                    {renderRows()}
+                </View>
+            </SafeAreaView >
+        </Panel>
+    );
 }
 
-const styles = StyleSheet.create({
-    text: {
-        margin: 6,
-        color: '#fff',
-        textAlign: 'center',
-    },
-    table: {
-        width: '100%',
-        backgroundColor: '#3d3d3d',
-        borderRadius: 15,
+export const TableGastos = () => {
+    const { theme } = useTheme();
 
-    },
-    shadowText: {
-        textShadowColor: "#000",
-        textShadowOffset: { width: -1, height: 1 },
-        textShadowRadius: 1
-    }
-});
+    const state = {
+        tableHead: ['Tipo', 'Data', 'Valor'],
+        widthArr: [55, 90, 120],
+        widthArrPerc: ["20%", "40%", "40%"],
+        tableData: [
+            {
+                "id": 1,
+                "icon": 'payments',
+                "date": "15/01/2022",
+                "qtde": "R$ 1.420,48",
+                "description": "Teste",
+                "method": "Pix"
+            },
+            {
+                "id": 2,
+                "icon": 'directions-car',
+                "date": "05/01/2022",
+                "qtde": "R$ 220,00",
+                "description": "Teste",
+                "method": "Crédito"
+            },
+            {
+                "id": 3,
+                "icon": 'directions-car',
+                "date": "05/01/2022",
+                "qtde": "R$ 220,00",
+                "description": "Teste",
+                "method": "Pix"
+            }
+        ],
+    };
+
+    return <TableGastosConstructor style={{ width: '100%' }} theme={theme} state={state} />
+};
