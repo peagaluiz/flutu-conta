@@ -2,7 +2,7 @@ import { Box } from "@/components/ui/box"
 import { HStack } from "@/components/ui/hstack"
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton"
 
-export default function Insert({ navigation }) {
+export default function Finance({ navigation }) {
     return (
         <Box className="w-100 gap-4 p-3 rounded-md">
             <Skeleton variant="sharp" className="h-[150px]" />

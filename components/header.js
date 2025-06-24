@@ -1,21 +1,84 @@
-import { TouchableOpacity } from 'react-native';
-import { Image } from 'react-native';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { Row } from './row';
-import { useTheme } from '@rneui/themed';
+import React from "react"
+import { HStack } from "@/components/ui/hstack"
+import { Heading } from "@/components/ui/heading"
+import { Text } from "@/components/ui/text"
+import { Divider } from '@/components/ui/divider';
+import {
+    Button,
+    ButtonIcon
+} from "@/components/ui/button"
+import {
+    LogOut,
+    Settings,
+    Banknote,
+    X
+} from "lucide-react-native"
+import {
+    Avatar,
+    AvatarBadge,
+    AvatarFallbackText,
+    AvatarImage,
+} from "@/components/ui/avatar"
+import {
+    Actionsheet,
+    ActionsheetBackdrop,
+    ActionsheetContent,
+    ActionsheetItem,
+    ActionsheetItemText,
+    ActionsheetIcon,
+} from '@/components/ui/actionsheet';
+
 
 const HeaderWrapper = ({ navigation, theme }) => {
+    const [showActionsheet, setShowActionsheet] = React.useState(false)
+    const handleClose = () => setShowActionsheet(false)
+
     return (
-        <Row style={{ justifyContent: 'space-between', alignItems: 'center', width: '100%', paddingHorizontal: 10, marginBottom: 0 }}>
-            <Image source={require('../assets/long-logo.png')} resizeMode='contain' style={{ width: 130, height: 130 }} />
-            <TouchableOpacity style={{ width: '50%', flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }}>
-                <MaterialIcons name="account-circle" size={30} color={theme.colors.flutu} onPress={() => { navigation.navigate('Profile') }} />
-            </TouchableOpacity>
-        </Row>
+        <HStack space="4xl" className="w-[100%] p-0 justify-between">
+            <HStack className="h-[30px] ">
+                <Heading size="xl" bold>Flutu</Heading><Text size="2xl" className="text-primary-600">Conta</Text>
+            </HStack>
+            <Button size="lg" className="h-[30px] w-[30px] rounded-full p-3.5" onPress={() => setShowActionsheet(true)}>
+                <Avatar size="md">
+                    <AvatarFallbackText>Jane Doe</AvatarFallbackText>
+                    <AvatarImage src="assets/avatar.png" />
+                    <AvatarBadge />
+                </Avatar>
+            </Button>
+            <Actionsheet isOpen={showActionsheet} onClose={handleClose}>
+                <ActionsheetBackdrop />
+                <ActionsheetContent>
+                    <HStack reversed={true} className="w-full justify-between items-center mb-4">
+                        <Button variant="link" className="p-4" onPress={handleClose}>
+                            <ButtonIcon size="lg" as={X} className="stroke-background-700" />
+                        </Button>
+                    </HStack>
+                    <HStack className="w-full justify-between items-center mb-4">
+                        <Avatar size="md">
+                            <AvatarFallbackText>Jane Doe</AvatarFallbackText>
+                            <AvatarImage src="assets/avatar.png" />
+                            <AvatarBadge />
+                        </Avatar>
+                        <Heading size="lg" className="text-background-700">Jane Doe</Heading>
+                        <Button variant="link" className="p-4">
+                            <ButtonIcon size="lg" className="stroke-background-700" as={Settings} />
+                        </Button>
+                    </HStack>
+                    <Divider className="my-4" />
+                    <ActionsheetItem>
+                        <ActionsheetIcon size="lg" className="stroke-background-700" as={Banknote} />
+                        <ActionsheetItemText size="lg">Salário</ActionsheetItemText>
+                    </ActionsheetItem>
+                    <ActionsheetItem className="my-4">
+                        <ActionsheetIcon size="lg" className="stroke-background-700" as={LogOut} />
+                        <ActionsheetItemText size="lg">Sair</ActionsheetItemText>
+                    </ActionsheetItem>
+                </ActionsheetContent>
+            </Actionsheet>
+        </HStack>
     );
 }
 
 export default function Header({ navigation }) {
-    const { theme } = useTheme();
-    return <HeaderWrapper navigation={navigation} theme={theme} />;
+    return <HeaderWrapper navigation={navigation} />;
 }

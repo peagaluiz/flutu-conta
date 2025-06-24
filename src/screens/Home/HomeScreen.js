@@ -1,40 +1,22 @@
 import { ScrollView } from 'react-native';
-
-// Components
-import CircleButton from '../../../components/circleButton';
-import { Panel } from '../../../components/panel';
-import { Title, PanelText, PanelSubText } from '../../../components/text';
-import { Row, Hr } from '../../../components/row';
-import { Container } from '../../../components/container';
-import { useTheme } from '@rneui/themed';
-import { TableGastos } from './TableGastos';
+import { Box } from "@/components/ui/box"
+import { HStack } from "@/components/ui/hstack"
+import { Skeleton, SkeletonText } from "@/components/ui/skeleton"
+import { Grid, GridItem } from "@/components/ui/grid"
+import { Heading } from "@/components/ui/heading"
+import { Text } from "@/components/ui/text"
 
 export default function Home({ navigation }) {
-    const { theme } = useTheme();
-
     return (
         <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
-            <Container >
-                <Row>
-                    <Panel>
-                        <Title>Saldo em Conta</Title>
-                        <PanelText>R$ 1.120,00</PanelText>
-                        <PanelSubText>R$ 791,58</PanelSubText>
-                        <Hr />
-                        <Title>Despesas Pendentes</Title>
-                        <PanelText>R$ 540,50</PanelText>
-                        <PanelSubText>R$ 579,50</PanelSubText>
-                    </Panel>
-                </Row>
-                <Row>
-                    <CircleButton name="search" size={30} />
-                    <CircleButton name="filter" size={30} />
-                    <CircleButton name="swap-vertical-outline" size={30} />
-                </Row>
-                <Row>
-                    <TableGastos />
-                </Row>
-            </Container>
+            <Box className="w-100 gap-4 p-3 rounded-md">
+                <Skeleton variant="sharp" className="h-[150px]" />
+                <SkeletonText _lines={3} className="h-3" />
+                <HStack className="gap-2 align-middle">
+                    <Skeleton variant="circular" className="h-[24px] w-[24px] mr-2" />
+                    <SkeletonText _lines={2} gap={1} className="h-2 w-2/5" />
+                </HStack>
+            </Box>
         </ScrollView>
     );
 }
