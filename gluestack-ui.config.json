@@ -5,6 +5,7 @@
   },
   "app": {
     "entry": "App.js",
-    "components": "components/ui"
+    "components": "components/ui",
+    "validators": "src/validators"
   }
 }
