@@ -1,7 +1,10 @@
 {
   "compilerOptions": {
-    "allowSyntheticDefaultImports": true,
+    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
+    "jsx": "react-native",
     "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
     "paths": {
       "@/*": [
         "./*"
@@ -14,5 +17,12 @@
   "exclude": [
     "node_modules"
   ],
-  "extends": "expo/tsconfig.base"
+  "extends": "expo/tsconfig.base",
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts",
+    "nativewind-env.d.ts"
+  ]
 }

@@ -4,7 +4,7 @@
     "css": "global.css"
   },
   "app": {
-    "entry": "App.js",
+    "entry": "app/_layout.js",
     "components": "components/ui",
     "validators": "src/validators"
   }

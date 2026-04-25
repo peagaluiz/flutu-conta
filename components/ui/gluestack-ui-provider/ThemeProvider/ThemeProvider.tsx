@@ -2,6 +2,7 @@
 "use client";
 
 import React, { createContext, useState, useEffect, useContext } from "react";
+import { Appearance } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 type Theme = "light" | "dark";
@@ -16,7 +17,9 @@ export const ThemeContext = createContext<ThemeContextType | undefined>(
 );
 
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
-    const [theme, setTheme] = useState<Theme>("light");
+    const [theme, setTheme] = useState<Theme>(
+        Appearance.getColorScheme() === "dark" ? "dark" : "light"
+    );
 
     useEffect(() => {
         (async () => {

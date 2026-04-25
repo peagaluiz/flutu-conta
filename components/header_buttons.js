@@ -1,77 +1,182 @@
+import { useAuth } from "@/state/AuthContext";
+import { useTheme } from "@/components/ui/gluestack-ui-provider/ThemeProvider/ThemeProvider";
 import React from "react"
-import { Platform } from 'react-native';
+import { Platform } from "react-native"
+import { useRouter } from "expo-router";
+import { useDatabase } from "@/services/database/useDatabase";
 import { HStack } from "@/components/ui/hstack"
-import { Heading } from "@/components/ui/heading"
-import { Divider } from '@/components/ui/divider';
-import {
-    Button,
-    ButtonIcon
-} from "@/components/ui/button"
-import {
-    LogOut,
-    Settings,
-    Banknote,
-    X
-} from "lucide-react-native"
+import { Button } from "@/components/ui/button"
 import {
     Avatar,
-    AvatarBadge,
     AvatarFallbackText,
     AvatarImage,
 } from "@/components/ui/avatar"
-import {
-    Actionsheet,
-    ActionsheetBackdrop,
-    ActionsheetContent,
-    ActionsheetItem,
-    ActionsheetItemText,
-    ActionsheetIcon,
-} from '@/components/ui/actionsheet';
+import { useErrorToast } from '@/components/ui/toast/useErrorToast';
+import { ProfileEditModal } from "@/components/header/ProfileEditModal";
+import { ProfileActionsSheet } from "@/components/header/ProfileActionsSheet";
+import { FamilyCreateModal } from "@/components/header/FamilyCreateModal";
+import { profileSchema } from "@/components/header/profileValidation";
 
 
 const HeaderWrapper = ({ navigation, theme }) => {
-    const [showActionsheet, setShowActionsheet] = React.useState(false);
-    const handleClose = () => setShowActionsheet(false);
+    const {
+        logOut,
+        userData,
+        family,
+        updateUserProfile,
+        createNewFamily,
+    } = useAuth();
+    const router = useRouter();
+    const { theme: currentTheme, toggleTheme } = useTheme();
+    const { syncAllPendingData } = useDatabase();
+    const { showNewToast } = useErrorToast();
+
+    const profileName = userData?.nome?.trim() || "Meu perfil";
+    const profileEmail = userData?.email || "";
+
+    const [showActionsheet, setShowActionsheet] = React.useState(false)
+    const [showEditModal, setShowEditModal] = React.useState(false)
+    const [displayName, setDisplayName] = React.useState('')
+    const [displayNameError, setDisplayNameError] = React.useState('')
+    const [isSaving, setIsSaving] = React.useState(false)
+    const [isSyncing, setIsSyncing] = React.useState(false)
+    const [showCreateFamilyModal, setShowCreateFamilyModal] = React.useState(false)
+    const [familyName, setFamilyName] = React.useState("")
+    const [isSavingFamily, setIsSavingFamily] = React.useState(false)
+
+    const handleClose = () => setShowActionsheet(false)
+
+    const handleEditOpen = () => {
+        setDisplayName(userData?.nome || '');
+        setDisplayNameError('');
+        handleClose();
+        setTimeout(() => {
+            setShowEditModal(true);
+        }, 120);
+    }
+
+    const handleSaveProfile = async () => {
+        try {
+            await profileSchema.validate({ displayName }, { abortEarly: false });
+            setDisplayNameError('');
+        } catch (validationError) {
+            const message = validationError?.errors?.[0] || validationError?.message || 'Nome invalido';
+            setDisplayNameError(message);
+            showNewToast('error', message);
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            await updateUserProfile(displayName.trim());
+            showNewToast('success', 'Perfil atualizado!');
+            setShowEditModal(false);
+        } catch (error) {
+            showNewToast('error', error?.message || 'Erro ao atualizar perfil');
+        } finally {
+            setIsSaving(false);
+        }
+    }
+
+    const handleForceSync = async () => {
+        handleClose();
+        setIsSyncing(true);
+        try {
+            const result = await syncAllPendingData({ force: true, throwOnError: true });
+            const synced = Number(result?.synced || 0);
+            showNewToast('success', `Sincronização concluída. ${synced} registro(s) sincronizado(s).`);
+        } catch (error) {
+            showNewToast('error', error?.message || 'Erro ao sincronizar com o Supabase');
+        } finally {
+            setIsSyncing(false);
+        }
+    }
+
+    const handleOpenFamily = () => {
+        handleClose();
+
+        if (family?.id) {
+            router.push("/(auth)/(stack)/family");
+            return;
+        }
+
+        setFamilyName("");
+        setTimeout(() => {
+            setShowCreateFamilyModal(true);
+        }, 120);
+    }
+
+    const handleCreateFamily = async () => {
+        const cleanName = String(familyName || "").trim();
+        if (!cleanName) {
+            showNewToast("warning", "Informe o nome da família", "Atenção");
+            return;
+        }
+
+        setIsSavingFamily(true);
+        try {
+            await createNewFamily(cleanName);
+            setShowCreateFamilyModal(false);
+            showNewToast("success", "Família criada com sucesso");
+            router.push("/(auth)/(stack)/family");
+        } catch (error) {
+            showNewToast("error", error?.message || "Erro ao criar família");
+        } finally {
+            setIsSavingFamily(false);
+        }
+    }
 
     return (
-        <HStack className="p-0 justify-start gap-4" style={{ marginRight: 10 }}>
-            <Button size="lg" className="h-[30px] w-[30px] rounded-full p-6" onPress={() => setShowActionsheet(true)}>
-                <Avatar size="md">
-                    <AvatarFallbackText>{'User'}</AvatarFallbackText>
-                    <AvatarImage src="assets/avatar.png" />
-                </Avatar>
-            </Button>
-            <Actionsheet isOpen={showActionsheet} onClose={handleClose}>
-                <ActionsheetBackdrop />
-                <ActionsheetContent>
-                    <HStack reversed={true} className="w-full justify-between items-center mb-4">
-                        <Button variant="link" className="p-4" onPress={handleClose}>
-                            <ButtonIcon size="lg" as={X} className="stroke-background-700" />
-                        </Button>
-                    </HStack>
-                    <HStack className="w-full justify-between items-center mb-4">
-                        <Avatar size="md">
-                            <AvatarFallbackText>Jane Doe</AvatarFallbackText>
-                            <AvatarImage src="assets/avatar.png" />
-                            <AvatarBadge />
-                        </Avatar>
-                        <Heading size="lg" className="text-background-700">Jane Doe</Heading>
-                        <Button variant="link" className="p-4">
-                            <ButtonIcon size="lg" className="stroke-background-700" as={Settings} />
-                        </Button>
-                    </HStack>
-                    <Divider className="my-4" />
-                    <ActionsheetItem>
-                        <ActionsheetIcon size="lg" className="stroke-background-700" as={Banknote} />
-                        <ActionsheetItemText size="lg">Salário</ActionsheetItemText>
-                    </ActionsheetItem>
-                    <ActionsheetItem className="my-4">
-                        <ActionsheetIcon size="lg" className="stroke-background-700" as={LogOut} />
-                        <ActionsheetItemText size="lg">Sair</ActionsheetItemText>
-                    </ActionsheetItem>
-                </ActionsheetContent>
-            </Actionsheet>
-        </HStack>
+        <>
+            <HStack className="py-0 px-4 justify-start gap-4 items-center" style={{ marginRight: Platform.OS === 'web' ? 16 : 0 }}>
+                <Button size="lg" className="h-[30px] w-[30px] rounded-full p-6" onPress={() => setShowActionsheet(true)} accessibilityLabel="Abrir ações do perfil">
+                    <Avatar size="md">
+                        <AvatarFallbackText>{userData?.email?.charAt(0).toUpperCase() || 'U'}</AvatarFallbackText>
+                        {userData?.avatarUrl ? <AvatarImage src={userData.avatarUrl} /> : null}
+                    </Avatar>
+                </Button>
+                <ProfileActionsSheet
+                    isOpen={showActionsheet}
+                    onClose={handleClose}
+                    onEditProfile={handleEditOpen}
+                    onSyncNow={handleForceSync}
+                    onToggleTheme={() => {
+                        toggleTheme();
+                        handleClose();
+                    }}
+                    onOpenFamily={handleOpenFamily}
+                    hasFamily={!!family?.id}
+                    onLogout={logOut}
+                    isSyncing={isSyncing}
+                    isDarkMode={currentTheme === 'dark'}
+                    profileName={profileName}
+                    profileEmail={profileEmail}
+                    profileImageUrl={userData?.avatarUrl}
+                />
+            </HStack>
+
+            <ProfileEditModal
+                isOpen={showEditModal}
+                value={displayName}
+                onChange={(nextValue) => {
+                    setDisplayName(nextValue);
+                    if (displayNameError) setDisplayNameError('');
+                }}
+                onClose={() => setShowEditModal(false)}
+                onSave={handleSaveProfile}
+                isSaving={isSaving}
+                errorMessage={displayNameError}
+            />
+
+            <FamilyCreateModal
+                isOpen={showCreateFamilyModal}
+                value={familyName}
+                onChange={setFamilyName}
+                onClose={() => setShowCreateFamilyModal(false)}
+                onSave={handleCreateFamily}
+                isSaving={isSavingFamily}
+            />
+        </>
     );
 }
 
