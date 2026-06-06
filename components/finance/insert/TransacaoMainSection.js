@@ -19,7 +19,7 @@ import { SearchableSelect } from "@/components/ui/search-select";
 import { SearchableSelectPessoas } from "@/components/finance/insert/SearchableSelectPessoas";
 import { FormRadioGroup } from "@/components/ui/radio-button/FormRadioGroup";
 import { MaskedFormInput } from "@/components/ui/input/MaskedFormInput";
-import { Landmark, Tag, CalendarDays, UserRound, ChevronDown, X } from "lucide-react-native";
+import { Landmark, Tag, CalendarDays, ChevronDown, X } from "lucide-react-native";
 
 export function TransacaoMainSection({
     isDarkMode,

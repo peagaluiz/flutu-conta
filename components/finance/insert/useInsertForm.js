@@ -25,6 +25,9 @@ export function useInsertForm() {
 		updateTransacao,
 		getTransacao,
 		findPessoaByName,
+		listBancos,
+		createBanco,
+		listCatalog,
 	} = useDatabase();
 
 	const [isSaving, setIsSaving] = useState(false);
@@ -34,6 +37,7 @@ export function useInsertForm() {
 	const [isBooting, setIsBooting] = useState(true);
 	const [isFromRecurrence, setIsFromRecurrence] = useState(false);
 	const [recurrenceMeta, setRecurrenceMeta] = useState(null);
+	const [selectedCatalogBanco, setSelectedCatalogBanco] = useState(null);
 
 	const editId = useMemo(() => {
 		const raw = Array.isArray(params?.id_transacao)
@@ -79,6 +83,7 @@ export function useInsertForm() {
 			data_vencimento: toISODate(new Date()),
 			observacao: "",
 			share_with_family: false,
+			id_banco: null,
 		},
 	});
 
@@ -120,9 +125,10 @@ export function useInsertForm() {
 					valor: formatValueForInput(t.valor),
 					categoria: t.categoria ?? "",
 					pessoa: t.pessoa ?? "",
-					data_vencimento: t.data_vencimento ?? "",
+					data_vencimento: normalizeDate(t.data_vencimento) ?? "",
 					observacao: t.observacao ?? "",
 					share_with_family: Number(t.is_family_shared || 0) === 1,
+					id_banco: t.id_banco ?? null,
 				});
 				setIsFromRecurrence(Number(t?.is_from_recurrence || 0) === 1);
 				setRecurrenceMeta({
@@ -130,6 +136,20 @@ export function useInsertForm() {
 					recurrence_frequency: t?.recurrence_frequency ?? null,
 					recurrence_sequence: t?.recurrence_sequence ?? null,
 				});
+
+				if (t.id_banco) {
+					const userBancos = await listBancos({ visibilityScope: "mine", userId: userData?.id ?? undefined });
+					const userBanco = userBancos.find((b) => b.id_banco === t.id_banco);
+					if (userBanco) {
+						const catalog = await listCatalog().catch(() => []);
+						const catalogItem = catalog.find(
+							(c) => c.nome.trim().toLowerCase() === userBanco.nome.trim().toLowerCase()
+						);
+						setSelectedCatalogBanco(
+							catalogItem ?? { id: null, nome: userBanco.nome, cor_hex: userBanco.cor_hex }
+						);
+					}
+				}
 			} catch (error) {
 				showNewToast(
 					"error",
@@ -160,18 +180,41 @@ export function useInsertForm() {
 		});
 	}, [navigation, router]);
 
+	const handleBancoSelect = (catalogItem) => {
+		if (!catalogItem) {
+			setSelectedCatalogBanco(null);
+			setValue("id_banco", null);
+			return;
+		}
+		setSelectedCatalogBanco(catalogItem);
+		// id_banco é resolvido em handleSave para evitar criar banco sem salvar
+	};
+
 	const handleSave = async (data) => {
 		try {
 			setIsSaving(true);
 			const typedPessoa = String(data.pessoa || "").trim();
-			const found = typedPessoa ? await findPessoaByName(typedPessoa) : null;
+			const foundPessoa = typedPessoa ? await findPessoaByName(typedPessoa) : null;
+
+			let resolvedBancoId = data.id_banco ?? null;
+			if (selectedCatalogBanco) {
+				const userBancos = await listBancos({ visibilityScope: "mine", userId: userData?.id ?? undefined });
+				const existingBanco = userBancos.find(
+					(b) => b.nome.trim().toLowerCase() === selectedCatalogBanco.nome.trim().toLowerCase()
+				);
+				resolvedBancoId = existingBanco
+					? existingBanco.id_banco
+					: (await createBanco(selectedCatalogBanco.nome, selectedCatalogBanco.cor_hex ?? "#6B7280", { userId: userData?.id ?? null })).id_banco;
+			}
+
 			const payload = {
 				tipo: data.tipo,
 				valor: parseBrNumber(data.valor),
 				categoria: data.categoria,
-				id_pessoa: found?.id_pessoa ?? null,
-				pessoa: found?.nome || typedPessoa || null,
+				id_pessoa: foundPessoa?.id_pessoa ?? null,
+				pessoa: foundPessoa?.nome || typedPessoa || null,
 				id_imobilizado: null,
+				id_banco: resolvedBancoId,
 				family_id: data.share_with_family && family?.id ? Number(family.id) : null,
 				is_family_shared: data.share_with_family && family?.id ? 1 : 0,
 				user_id: userData?.id ?? null,
@@ -228,5 +271,7 @@ export function useInsertForm() {
 		handleSave,
 		handleBack: () => router.replace("/"),
 		family,
+		selectedCatalogBanco,
+		handleBancoSelect,
 	};
 }

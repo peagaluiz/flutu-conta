@@ -110,8 +110,10 @@ export function buildResumoGeral(items = []) {
 		(acc, item) => {
 			if (item.tipo === "receber") {
 				acc.entradas += item.valor;
+				if (item.status === "pago") acc.entradasPagas += item.valor;
 			} else {
 				acc.saidas += item.valor;
+				if (item.status === "pago") acc.saidasPagas += item.valor;
 			}
 
 			if (item.status !== "pago") {
@@ -120,71 +122,131 @@ export function buildResumoGeral(items = []) {
 
 			return acc;
 		},
-		{ entradas: 0, saidas: 0, pendentes: 0, saldo: 0 }
+		{ entradas: 0, saidas: 0, entradasPagas: 0, saidasPagas: 0, pendentes: 0, saldo: 0 }
 	);
 }
 
 export function finalizeResumo(resumo) {
+	const saldo = resumo.entradas - resumo.saidas;
+	const saldoReal = resumo.entradasPagas - resumo.saidasPagas;
 	return {
 		...resumo,
-		saldo: resumo.entradas - resumo.saidas,
+		saldo,
+		saldoReal,
 		entradasLabel: formatCurrency(resumo.entradas),
 		saidasLabel: formatCurrency(resumo.saidas),
-		saldoLabel: formatCurrency(resumo.entradas - resumo.saidas),
+		saldoLabel: formatCurrency(saldo),
+		saldoRealLabel: formatCurrency(saldoReal),
 	};
+}
+
+function getISOWeekMonday(date) {
+	const d = new Date(date);
+	d.setHours(0, 0, 0, 0);
+	const day = d.getDay() || 7;
+	d.setDate(d.getDate() - day + 1);
+	return d;
+}
+
+function toISODate(date) {
+	const y = date.getFullYear();
+	const m = String(date.getMonth() + 1).padStart(2, "0");
+	const d = String(date.getDate()).padStart(2, "0");
+	return `${y}-${m}-${d}`;
+}
+
+function buildSeriesMap(base, getKey, getLabel) {
+	const map = new Map();
+	base.forEach((item) => {
+		const key = getKey(item);
+		if (!key) return;
+		if (!map.has(key)) {
+			map.set(key, { key, label: getLabel(key, item), entradas: 0, saidas: 0, items: [] });
+		}
+		const entry = map.get(key);
+		entry.items.push(item);
+		if (item.tipo === "receber") entry.entradas += item.valor;
+		else entry.saidas += item.valor;
+	});
+	const sorted = Array.from(map.values()).sort((a, b) =>
+		a.key.localeCompare(b.key)
+	);
+	const maxValue = sorted.reduce(
+		(acc, g) => Math.max(acc, g.entradas, g.saidas),
+		0
+	);
+	return { items: sorted, maxValue: maxValue <= 0 ? 1 : maxValue };
+}
+
+export function buildYearlySeries(items = []) {
+	const base = normalizeTransactions(items);
+	return buildSeriesMap(
+		base,
+		(item) => String(item.referenceDate || "").slice(0, 4),
+		(key) => key
+	);
 }
 
 export function buildMonthlySeries(items = []) {
 	const base = normalizeTransactions(items);
 
-	if (!base.length) {
-		return { items: [], maxValue: 1 };
-	}
+	if (!base.length) return { items: [], maxValue: 1 };
 
 	const monthKeys = base
 		.map((item) => getMonthKey(item.referenceDate))
 		.filter(Boolean)
 		.sort();
+	if (!monthKeys.length) return { items: [], maxValue: 1 };
 
-	if (!monthKeys.length) {
-		return { items: [], maxValue: 1 };
-	}
+	const allKeys = buildMonthKeyList(monthKeys[0], monthKeys[monthKeys.length - 1]);
 
-	const groupedKeys = buildMonthKeyList(
-		monthKeys[0],
-		monthKeys[monthKeys.length - 1]
+	const map = new Map(
+		allKeys.map((key) => [key, { key, label: getMonthLabel(key), entradas: 0, saidas: 0, items: [] }])
 	);
-
-	const grouped = groupedKeys.map((key) => ({
-		key,
-		label: getMonthLabel(key),
-		entradas: 0,
-		saidas: 0,
-	}));
 
 	base.forEach((item) => {
-		const monthKey = getMonthKey(item.referenceDate);
-		if (!monthKey) return;
-
-		const index = grouped.findIndex((entry) => entry.key === monthKey);
-		if (index < 0) return;
-
-		if (item.tipo === "receber") {
-			grouped[index].entradas += item.valor;
-		} else {
-			grouped[index].saidas += item.valor;
-		}
+		const key = getMonthKey(item.referenceDate);
+		if (!key || !map.has(key)) return;
+		const entry = map.get(key);
+		entry.items.push(item);
+		if (item.tipo === "receber") entry.entradas += item.valor;
+		else entry.saidas += item.valor;
 	});
 
+	const grouped = Array.from(map.values());
 	const maxValue = grouped.reduce(
-		(acc, item) => Math.max(acc, item.entradas, item.saidas),
+		(acc, g) => Math.max(acc, g.entradas, g.saidas),
 		0
 	);
+	return { items: grouped, maxValue: maxValue <= 0 ? 1 : maxValue };
+}
 
-	return {
-		items: grouped,
-		maxValue: maxValue <= 0 ? 1 : maxValue,
-	};
+export function buildWeeklySeries(items = []) {
+	const base = normalizeTransactions(items);
+	return buildSeriesMap(
+		base,
+		(item) => {
+			if (!item.referenceDate) return null;
+			const monday = getISOWeekMonday(new Date(`${item.referenceDate}T00:00:00`));
+			return toISODate(monday);
+		},
+		(key) => {
+			const [, m, d] = key.split("-");
+			return `${d}/${m}`;
+		}
+	);
+}
+
+export function buildDailySeries(items = []) {
+	const base = normalizeTransactions(items);
+	return buildSeriesMap(
+		base,
+		(item) => String(item.referenceDate || "").slice(0, 10),
+		(key) => {
+			const [, m, d] = key.split("-");
+			return `${d}/${m}`;
+		}
+	);
 }
 
 export function buildCategoryExpenses(items = [], top = 6) {

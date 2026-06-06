@@ -142,6 +142,18 @@ export async function initializeSQLite(database: SQLiteDatabase) {
 		);
 	`);
 
+	await database.execAsync(`
+		CREATE TABLE IF NOT EXISTS banco_catalogo (
+			id              INTEGER PRIMARY KEY,
+			nome            TEXT NOT NULL,
+			cor_hex         TEXT,
+			logo_url        TEXT,
+			logo_local_path TEXT,
+			ativo           INTEGER NOT NULL DEFAULT 1,
+			cached_at       TEXT NOT NULL
+		);
+	`);
+
 	// Migrações para bases já existentes — sempre antes dos CREATE INDEX
 	const safeAddColumn = async (sql: string) => {
 		try {

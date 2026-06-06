@@ -22,6 +22,8 @@ export function useLaunchesEditor({
 	const [savingEditor, setSavingEditor] = useState(false);
 	const [shareWithFamily, setShareWithFamily] = useState(false);
 
+	const [catalogSheetOpen, setCatalogSheetOpen] = useState(false);
+
 	const closeEditor = useCallback(() => {
 		setEditorOpen(false);
 		setEditorMode("create");
@@ -32,6 +34,26 @@ export function useLaunchesEditor({
 		setPessoaOptions([]);
 		setShareWithFamily(false);
 	}, []);
+
+	const closeCatalogSheet = useCallback(() => {
+		setCatalogSheetOpen(false);
+	}, []);
+
+	const createBancoFromCatalog = useCallback(
+		async (item) => {
+			try {
+				await database.createBanco(item.nome, item.cor_hex, {
+					userId: userData?.id ?? null,
+					familyId: family?.id ? Number(family.id) : null,
+					isFamilyShared: false,
+				});
+				await loadData("bancos");
+			} catch {
+				Alert.alert("Erro", "Não foi possível adicionar o banco.");
+			}
+		},
+		[database, family?.id, loadData, userData?.id]
+	);
 
 	const loadPessoaOptions = useCallback(async () => {
 		try {
@@ -53,6 +75,10 @@ export function useLaunchesEditor({
 	const openCreate = useCallback(() => {
 		if (section === "transacoes" || section === "recorrencias") {
 			router.push("/(auth)/(stack)/insert");
+			return;
+		}
+		if (section === "bancos") {
+			setCatalogSheetOpen(true);
 			return;
 		}
 		setEditorMode("create");
@@ -216,5 +242,8 @@ export function useLaunchesEditor({
 		openEdit,
 		selectPessoaOption,
 		saveEditor,
+		catalogSheetOpen,
+		closeCatalogSheet,
+		createBancoFromCatalog,
 	};
 }

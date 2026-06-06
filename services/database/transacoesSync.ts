@@ -18,6 +18,7 @@ export type SyncSummary = {
 		tipo_imobilizado: { processed: number; synced: number; errors: number };
 		imobilizado: { processed: number; synced: number; errors: number };
 		transacoes: { processed: number; synced: number; errors: number };
+		banco: { processed: number; synced: number; errors: number };
 	};
 };
 
@@ -35,6 +36,7 @@ function createEmptySummary(): SyncSummary {
 			tipo_imobilizado: emptyTableSummary(),
 			imobilizado: emptyTableSummary(),
 			transacoes: emptyTableSummary(),
+			banco: emptyTableSummary(),
 		},
 	};
 }
@@ -59,6 +61,10 @@ function mergeSummary(target: SyncSummary, source: SyncSummary) {
 	target.tables.transacoes.processed += source.tables.transacoes.processed;
 	target.tables.transacoes.synced += source.tables.transacoes.synced;
 	target.tables.transacoes.errors += source.tables.transacoes.errors;
+
+	target.tables.banco.processed += source.tables.banco.processed;
+	target.tables.banco.synced += source.tables.banco.synced;
+	target.tables.banco.errors += source.tables.banco.errors;
 }
 
 async function getAuthUserId() {
@@ -848,14 +854,187 @@ async function syncRemoteTableDown(
 	return summary;
 }
 
-async function syncAllPendingInternal() {
+async function upsertRemoteBancoLocally(remote: any) {
+	if (!db || !remote?.id_banco) return null;
+
+	const existing = await db.getFirstAsync<any>(
+		`SELECT * FROM banco WHERE remote_id = ? LIMIT 1`,
+		remote.id_banco
+	);
+
+	if (existing) {
+		if (Number(existing?.deleted || 0) === 1) return existing;
+
+		if (
+			String(existing?.nome || "") === String(remote?.nome || "") &&
+			String(existing?.cor_hex || "") === String(remote?.cor_hex || "") &&
+			String(existing?.user_id || "") === String(remote?.user_id || "") &&
+			Number(existing?.family_id || 0) === Number(remote?.family_id || 0) &&
+			Number(existing?.is_family_shared || 0) === Number(remote?.is_family_shared || 0) &&
+			String(existing?.sync_status || "") === "synced" &&
+			Number(existing?.synced || 0) === 1
+		) {
+			return existing;
+		}
+
+		await db.runAsync(
+			`
+			UPDATE banco
+			SET nome = COALESCE(?, nome),
+				cor_hex = COALESCE(?, cor_hex),
+				user_id = COALESCE(?, user_id),
+				family_id = ?,
+				is_family_shared = ?,
+				data_sync = ?,
+				sync_status = 'synced',
+				synced = 1,
+				deleted = 0
+			WHERE id_banco = ?
+			`,
+			remote.nome ?? null,
+			remote.cor_hex ?? null,
+			remote.user_id ?? null,
+			remote.family_id ?? null,
+			Number(remote.is_family_shared ?? 0),
+			nowISO(),
+			existing.id_banco
+		);
+
+		return db.getFirstAsync<any>(`SELECT * FROM banco WHERE id_banco = ? LIMIT 1`, existing.id_banco);
+	}
+
+	const inserted = await db.runAsync(
+		`
+		INSERT INTO banco (
+			remote_id, nome, cor_hex, user_id, family_id, is_family_shared,
+			data_sync, sync_status, synced, deleted
+		) VALUES (?, ?, ?, ?, ?, ?, ?, 'synced', 1, 0)
+		`,
+		remote.id_banco,
+		remote.nome ?? "",
+		remote.cor_hex ?? "#6B7280",
+		remote.user_id ?? null,
+		remote.family_id ?? null,
+		Number(remote.is_family_shared ?? 0),
+		nowISO()
+	);
+
+	return db.getFirstAsync<any>(`SELECT * FROM banco WHERE id_banco = ? LIMIT 1`, inserted.lastInsertRowId);
+}
+
+async function syncBancoInternal(): Promise<SyncSummary> {
+	if (!db || Platform.OS === "web") return createEmptySummary();
+
+	const summary = createEmptySummary();
+
+	const rows = await db.getAllAsync<any>(
+		`
+		SELECT * FROM banco
+		WHERE (sync_status = 'pending' OR sync_status = 'error' OR synced = 0)
+		ORDER BY id_banco ASC
+		LIMIT 100
+		`
+	);
+
+	for (const row of rows) {
+		summary.processed += 1;
+		summary.tables.banco.processed += 1;
+
+		try {
+			if (Number(row?.deleted || 0) === 1) {
+				if (row.remote_id) {
+					const { error: unlinkError } = await supabase
+						.from("transacoes")
+						.update({ id_banco: null, updated_at: nowISO() })
+						.eq("id_banco", row.remote_id);
+					if (unlinkError) throw unlinkError;
+
+					const { error } = await supabase.from("banco").delete().eq("id_banco", row.remote_id);
+					if (error) throw error;
+				}
+
+				await markRowAsSynced("banco", "id_banco", row.id_banco, row.remote_id ?? null);
+				summary.synced += 1;
+				summary.tables.banco.synced += 1;
+				continue;
+			}
+
+			const payload = {
+				nome: row.nome,
+				cor_hex: row.cor_hex,
+				user_id: row.user_id ?? null,
+				family_id: row.family_id ?? null,
+				is_family_shared: Number(row.is_family_shared ?? 0),
+			};
+
+			if (row.remote_id) {
+				const { error } = await supabase.from("banco").update(payload).eq("id_banco", row.remote_id);
+				if (error) throw error;
+				await markRowAsSynced("banco", "id_banco", row.id_banco, row.remote_id);
+			} else {
+				const { data: inserted, error } = await supabase
+					.from("banco")
+					.insert(payload)
+					.select("id_banco")
+					.single();
+				if (error) throw error;
+				await markRowAsSynced("banco", "id_banco", row.id_banco, (inserted as any)?.id_banco ?? null);
+			}
+
+			summary.synced += 1;
+			summary.tables.banco.synced += 1;
+		} catch (error) {
+			await markRowAsError("banco", "id_banco", row.id_banco);
+			summary.errors += 1;
+			summary.tables.banco.errors += 1;
+			console.warn("[syncBanco] erro", row?.id_banco, error);
+		}
+	}
+
+	return summary;
+}
+
+async function syncRemoteBancoDown(): Promise<SyncSummary> {
+	if (!db || Platform.OS === "web") return createEmptySummary();
+
+	const { data, error } = await supabase
+		.from("banco")
+		.select("*")
+		.order("id_banco", { ascending: true });
+
+	if (error) throw error.message;
+
+	const summary = createEmptySummary();
+	const rows = Array.isArray(data) ? data : [];
+
+	for (const row of rows) {
+		summary.processed += 1;
+		summary.tables.banco.processed += 1;
+
+		try {
+			await upsertRemoteBancoLocally(row);
+			summary.synced += 1;
+			summary.tables.banco.synced += 1;
+		} catch {
+			summary.errors += 1;
+			summary.tables.banco.errors += 1;
+		}
+	}
+
+	return summary;
+}
+
+async function syncAllPendingInternal(onProgress?: (step: string) => void) {
+	onProgress?.("Verificando dados locais...");
 	await backfillLocalOwnershipIfMissing();
 
 	const full = createEmptySummary();
 
+	onProgress?.("Enviando pessoas...");
 	const pessoaSummary = await syncTable("pessoa", "id_pessoa", "id_pessoa", toPessoaPayload);
 	mergeSummary(full, pessoaSummary);
 
+	onProgress?.("Enviando tipos...");
 	const tipoSummary = await syncTable(
 		"tipo_imobilizado",
 		"id_tipo_imobilizado",
@@ -864,6 +1043,7 @@ async function syncAllPendingInternal() {
 	);
 	mergeSummary(full, tipoSummary);
 
+	onProgress?.("Enviando bens...");
 	const imobilizadoSummary = await syncTable(
 		"imobilizado",
 		"id_imobilizado",
@@ -872,9 +1052,15 @@ async function syncAllPendingInternal() {
 	);
 	mergeSummary(full, imobilizadoSummary);
 
+	onProgress?.("Enviando lançamentos...");
 	const transacoesSummary = await syncPendingTransacoesInternal();
 	mergeSummary(full, transacoesSummary);
 
+	onProgress?.("Enviando bancos...");
+	const bancoSummary = await syncBancoInternal();
+	mergeSummary(full, bancoSummary);
+
+	onProgress?.("Baixando dados do servidor...");
 	const pessoaDown = await syncRemoteTableDown("pessoa");
 	mergeSummary(full, pessoaDown);
 
@@ -887,10 +1073,14 @@ async function syncAllPendingInternal() {
 	const transacoesDown = await syncRemoteTableDown("transacoes");
 	mergeSummary(full, transacoesDown);
 
+	onProgress?.("Atualizando bancos...");
+	const bancoDown = await syncRemoteBancoDown();
+	mergeSummary(full, bancoDown);
+
 	return full;
 }
 
-export async function syncAllPendingData(options?: { force?: boolean; throwOnError?: boolean }) {
+export async function syncAllPendingData(options?: { force?: boolean; throwOnError?: boolean; onProgress?: (step: string) => void }) {
 	if (Platform.OS === "web") return;
 
 	const force = !!options?.force;
@@ -909,7 +1099,7 @@ export async function syncAllPendingData(options?: { force?: boolean; throwOnErr
 	syncInFlight = (async () => {
 		let summary = createEmptySummary();
 		try {
-			summary = await syncAllPendingInternal();
+			summary = await syncAllPendingInternal(options?.onProgress);
 
 			if (throwOnError && summary.errors > 0) {
 				throw new Error("Falha ao sincronizar alguns registros com o Supabase");

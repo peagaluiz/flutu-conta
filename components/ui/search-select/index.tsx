@@ -1,6 +1,17 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { FlatList, Keyboard, Platform, Animated, Dimensions, Easing } from "react-native";
-import { ChevronRight, Circle, CircleCheckBig, CirclePlus, LucideIcon } from "lucide-react-native";
+import { FlatList, Keyboard, Dimensions } from "react-native";
+import Animated, {
+    useSharedValue,
+    withSpring,
+    useAnimatedStyle,
+} from "react-native-reanimated";
+
+import { ChevronRight, Circle, CircleCheckBig, CirclePlus, ChevronDown, Search, LucideIcon } from "lucide-react-native";
+
+const SPRING = { damping: 16, stiffness: 180, mass: 0.7 };
+// Cache da última altura do teclado. Persiste entre renders pra animar
+// imediatamente no onFocus, sem esperar keyboardDidShow.
+let cachedKeyboardHeight = 0;
 import { Box } from "@/components/ui/box";
 import { Text } from "@/components/ui/text";
 import { HStack } from "@/components/ui/hstack";
@@ -22,14 +33,222 @@ import {
     ActionsheetItemText,
 } from "@/components/ui/actionsheet";
 import { MaskedFormInput } from "@/components/ui/input/MaskedFormInput";
-import { ChevronDown, Search } from "lucide-react-native";
 import { useSelectorOverlay } from "@/state/SelectorOverlayContext";
 
-type Option = string | {
+type NormalizedOption = {
     id: string | number;
     label: string;
     rawLabel?: string;
+    variant?: "catalog";
+};
+
+type Option = string | NormalizedOption;
+
+const SCREEN_HEIGHT = Dimensions.get("window").height;
+const MAX_HEIGHT = SCREEN_HEIGHT * 0.55;
+
+// ─── Sheet (parte interna do actionsheet, controlada externamente) ───────────
+
+interface SearchableSelectSheetProps {
+    isOpen: boolean;
+    onClose: () => void;
+    onSelect: (id: string | number) => void;
+    options: NormalizedOption[];
+    value?: string | number | null;
+    searchPlaceholder?: string;
+    themeColors?: { textPrimary?: string; textSecondary?: string };
+    autoFocusSearch?: boolean;
+    fixedHeight?: boolean;
+    actionSheetContentStyle?: object;
+    inputContainerStyle?: object;
+    allowCreateOption?: boolean;
+    getCreateLabel?: (search: string) => string;
 }
+
+export function SearchableSelectSheet({
+    isOpen,
+    onClose,
+    onSelect,
+    options = [],
+    value,
+    searchPlaceholder = "Pesquisar...",
+    themeColors,
+    autoFocusSearch = false,
+    fixedHeight = true,
+    actionSheetContentStyle,
+    inputContainerStyle,
+    allowCreateOption = false,
+    getCreateLabel,
+}: SearchableSelectSheetProps) {
+    const [searchTerm, setSearchTerm] = useState("");
+    const [shouldAutoFocus, setShouldAutoFocus] = useState(false);
+    // translateY do wrapper ao redor do ActionsheetContent.
+    // Subir o sheet pelo thread UI (Reanimated) em vez de mudar paddingBottom
+    // (que passa por JS → re-render → onLayout → gluestack → Legend Motion),
+    // elimina o delay e o "voo" de uma vez só.
+    const kbOffset = useSharedValue(0);
+
+    useEffect(() => {
+        const show = Keyboard.addListener("keyboardDidShow", (e) => {
+            const kh = e.endCoordinates.height;
+            cachedKeyboardHeight = kh;
+            // Corrige para a altura real caso o onFocus tenha usado o cache/fallback
+            if (Math.abs(kbOffset.value + kh) > 5) {
+                kbOffset.value = withSpring(-kh, SPRING);
+            }
+        });
+        const hide = Keyboard.addListener("keyboardDidHide", () => {
+            kbOffset.value = withSpring(0, SPRING);
+        });
+        return () => {
+            show.remove();
+            hide.remove();
+        };
+    }, []);
+
+    const handleInputFocus = () => {
+        if (kbOffset.value < -10) return; // já animado
+        const kh = cachedKeyboardHeight || 300;
+        kbOffset.value = withSpring(-kh, SPRING);
+    };
+
+    const kbWrapperStyle = useAnimatedStyle(() => ({
+        transform: [{ translateY: kbOffset.value }],
+        width: "100%",
+        height: "100%",
+    }));
+
+    const containerStyle = {
+        width: "100%" as const,
+        paddingHorizontal: 8,
+        paddingBottom: 16,
+        height: MAX_HEIGHT,
+    };
+
+    const textPrimary = themeColors?.textPrimary;
+    const textSecondary = themeColors?.textSecondary;
+
+    const filteredOptions = useMemo(() => {
+        const trimmed = searchTerm.trim();
+        let list = options.filter((item) =>
+            item.label.toLowerCase().includes(trimmed.toLowerCase())
+        );
+        if (allowCreateOption && trimmed.length > 0) {
+            const exists = options.some(
+                (item) => item.label.toLowerCase() === trimmed.toLowerCase()
+            );
+            if (!exists) {
+                list.unshift({
+                    id: trimmed,
+                    label: getCreateLabel ? getCreateLabel(trimmed) : `Criar "${trimmed}"`,
+                });
+            }
+        }
+        return list;
+    }, [options, searchTerm, allowCreateOption, getCreateLabel]);
+
+    useEffect(() => {
+        if (!isOpen) {
+            setShouldAutoFocus(false);
+            setSearchTerm("");
+            kbOffset.value = 0;
+        } else if (autoFocusSearch) {
+            const t = setTimeout(() => setShouldAutoFocus(true), 350);
+            return () => clearTimeout(t);
+        }
+    }, [isOpen]);
+
+    const handleClose = () => {
+        Keyboard.dismiss();
+        setSearchTerm("");
+        setShouldAutoFocus(false);
+        onClose();
+    };
+
+    const handleSelect = (id: string | number) => {
+        onSelect(id);
+        handleClose();
+    };
+
+    return (
+        <Actionsheet isOpen={isOpen} onClose={handleClose}>
+            <ActionsheetBackdrop onPress={handleClose} />
+            <Animated.View style={kbWrapperStyle} pointerEvents="box-none">
+                <ActionsheetContent style={actionSheetContentStyle}>
+                    <ActionsheetDragIndicatorWrapper>
+                        <ActionsheetDragIndicator />
+                    </ActionsheetDragIndicatorWrapper>
+
+                    <Box style={containerStyle}>
+                        <MaskedFormInput
+                            label=""
+                            placeholder={searchPlaceholder}
+                            icon={Search}
+                            value={searchTerm}
+                            onChange={setSearchTerm}
+                            onFocus={handleInputFocus}
+                            onBlur={() => { }}
+                            className="w-full my-2"
+                            inputContainerStyle={inputContainerStyle}
+                            isRequired={false}
+                            autoFocus={shouldAutoFocus}
+                        />
+
+                        <Box style={{ flex: 1 }}>
+                            <FlatList
+                                data={filteredOptions}
+                                keyExtractor={(item) => String(item.id)}
+                                initialNumToRender={15}
+                                maxToRenderPerBatch={10}
+                                windowSize={5}
+                                removeClippedSubviews={true}
+                                keyboardShouldPersistTaps="handled"
+                                showsVerticalScrollIndicator={true}
+                                renderItem={({ item }) => {
+                                    const isSelected = String(item.id) === String(value);
+                                    const isCreateOption =
+                                        allowCreateOption &&
+                                        getCreateLabel &&
+                                        item.label === getCreateLabel(searchTerm.trim());
+                                    const isCatalogOnly = item.variant === "catalog";
+                                    const dimColor = isCatalogOnly ? textSecondary : undefined;
+                                    return (
+                                        <ActionsheetItem onPress={() => handleSelect(item.id)}>
+                                            <HStack className="flex-row items-center justify-between w-full">
+                                                <HStack className="items-center gap-2">
+                                                    {isSelected ? (
+                                                        <CircleCheckBig size={18} color={textPrimary} />
+                                                    ) : isCreateOption || isCatalogOnly ? (
+                                                        <CirclePlus size={18} color={textSecondary} />
+                                                    ) : (
+                                                        <Circle size={18} color={textSecondary} />
+                                                    )}
+                                                    <ActionsheetItemText style={dimColor ? { color: dimColor, opacity: 0.65 } : undefined}>
+                                                        {item.label}
+                                                    </ActionsheetItemText>
+                                                </HStack>
+                                                <ChevronRight color={dimColor ?? textPrimary} />
+                                            </HStack>
+                                        </ActionsheetItem>
+                                    );
+                                }}
+                                ListEmptyComponent={
+                                    <Box className="p-4 items-center">
+                                        <Text style={{ color: textSecondary }}>
+                                            Nenhum resultado encontrado
+                                        </Text>
+                                    </Box>
+                                }
+                            />
+                        </Box>
+                    </Box>
+                </ActionsheetContent>
+            </Animated.View>
+        </Actionsheet>
+    );
+}
+
+// ─── SearchableSelect (trigger button + sheet) ────────────────────────────────
 
 interface SearchableSelectProps {
     label: string;
@@ -43,20 +262,13 @@ interface SearchableSelectProps {
     isRequired?: boolean;
     inputContainerStyle?: object;
     actionSheetContentStyle?: object;
-    themeColors?: {
-        textPrimary?: string;
-        textSecondary?: string;
-    };
+    themeColors?: { textPrimary?: string; textSecondary?: string };
     isDarkMode?: boolean;
     autoFocusSearch?: boolean;
     fixedHeight?: boolean;
     allowCreateOption?: boolean;
     getCreateLabel?: (search: string) => string;
 }
-
-const SCREEN_HEIGHT = Dimensions.get('window').height;
-const MAX_HEIGHT = SCREEN_HEIGHT * 0.55;
-const LIST_HEIGHT = MAX_HEIGHT - 80;
 
 export function SearchableSelect({
     label,
@@ -78,108 +290,34 @@ export function SearchableSelect({
     getCreateLabel,
 }: SearchableSelectProps) {
     const [showSheet, setShowSheet] = useState(false);
-    const [searchTerm, setSearchTerm] = useState("");
-    const [shouldAutoFocus, setShouldAutoFocus] = useState(false);
-    const animatedMargin = useState(new Animated.Value(0))[0];
     const { open: overlayOpen, close: overlayClose } = useSelectorOverlay();
 
     const textPrimary = themeColors?.textPrimary;
     const textSecondary = themeColors?.textSecondary;
 
-    const normalizedOptions = useMemo(() => {
+    const normalizedOptions = useMemo<NormalizedOption[]>(() => {
         return options.map((item) => {
-            if (typeof item === "string") {
-                return { id: item, label: item };
-            }
+            if (typeof item === "string") return { id: item, label: item };
             return item;
         });
     }, [options]);
 
-    const filteredOptions = useMemo(() => {
-        const trimmed = searchTerm.trim();
-        let list = normalizedOptions.filter(item =>
-            item.label.toLowerCase().includes(trimmed.toLowerCase())
-        );
-        if (allowCreateOption && trimmed.length > 0) {
-            const exists = normalizedOptions.some(item =>
-                item.label.toLowerCase() === trimmed.toLowerCase()
-            );
-            if (!exists) {
-                list.unshift({
-                    id: trimmed,
-                    label: getCreateLabel ? getCreateLabel(trimmed) : `Criar "${trimmed}"`,
-                });
-            }
-        }
-        return list;
-    }, [normalizedOptions, searchTerm, allowCreateOption]);
-
     const selected = useMemo(() => {
-        const all = [...normalizedOptions, ...filteredOptions];
-        const found = all.find(o => String(o.id) === String(value));
+        const found = normalizedOptions.find((o) => String(o.id) === String(value));
         if (found) return found;
         if (value) return { id: value, label: String(value), rawLabel: String(value) };
         return undefined;
-    }, [normalizedOptions, filteredOptions, value]);
-
-    useEffect(() => {
-        const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-        const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-
-        const onShow = Keyboard.addListener(showEvent, (e) => {
-            const duration = Platform.OS === 'ios' ? (e.duration ?? 250) : 120;
-            Animated.timing(animatedMargin, {
-                toValue: e.endCoordinates.height / 2,
-                duration,
-                easing: Easing.out(Easing.ease),
-                useNativeDriver: false,
-            }).start();
-        });
-
-        const onHide = Keyboard.addListener(hideEvent, () => {
-            if (Platform.OS === 'ios') {
-                Animated.timing(animatedMargin, {
-                    toValue: 0,
-                    duration: 250,
-                    easing: Easing.in(Easing.ease),
-                    useNativeDriver: false,
-                }).start();
-            } else {
-                animatedMargin.setValue(0);
-            }
-        });
-
-        return () => {
-            onShow.remove();
-            onHide.remove();
-        };
-    }, []);
-
-    useEffect(() => {
-        if (!showSheet) {
-            setShouldAutoFocus(false);
-            animatedMargin.setValue(0);
-        }
-    }, [showSheet]);
-
-    const handleClose = () => {
-        Keyboard.dismiss();
-        overlayClose();
-        animatedMargin.setValue(0);
-        setShowSheet(false);
-        setSearchTerm("");
-        setShouldAutoFocus(false);
-    };
-
-    const handleSelect = (item: string | number) => {
-        onChange(item);
-        handleClose();
-    };
+    }, [normalizedOptions, value]);
 
     const handleOpen = () => {
+        Keyboard.dismiss();
         overlayOpen();
         setShowSheet(true);
-        if (autoFocusSearch) setShouldAutoFocus(true);
+    };
+
+    const handleClose = () => {
+        overlayClose();
+        setShowSheet(false);
     };
 
     return (
@@ -209,69 +347,21 @@ export function SearchableSelect({
                 </FormControlError>
             )}
 
-            <Actionsheet isOpen={showSheet} onClose={handleClose}>
-                <ActionsheetBackdrop onPress={handleClose} />
-                <ActionsheetContent style={actionSheetContentStyle}>
-                    <ActionsheetDragIndicatorWrapper>
-                        <ActionsheetDragIndicator />
-                    </ActionsheetDragIndicatorWrapper>
-
-                    <Animated.View style={{ width: '100%', marginBottom: animatedMargin }}>
-                        <Box className="w-full px-2 pb-4" style={{ maxHeight: MAX_HEIGHT }}>
-                            <MaskedFormInput
-                                label=""
-                                placeholder={searchPlaceholder}
-                                icon={Search}
-                                value={searchTerm}
-                                onChange={setSearchTerm}
-                                onBlur={() => { }}
-                                className="w-full my-2"
-                                inputContainerStyle={inputContainerStyle}
-                                isRequired={false}
-                                autoFocus={shouldAutoFocus}
-                            />
-
-                            <Box style={{ height: LIST_HEIGHT }}>
-                                <FlatList
-                                    data={filteredOptions}
-                                    keyExtractor={(item) => String(item.id)}
-                                    initialNumToRender={15}
-                                    maxToRenderPerBatch={10}
-                                    windowSize={5}
-                                    removeClippedSubviews={true}
-                                    keyboardShouldPersistTaps="handled"
-                                    showsVerticalScrollIndicator={true}
-                                    renderItem={({ item }) => {
-                                        const isSelected = item.id === value;
-                                        const isCreateOption = allowCreateOption && getCreateLabel && item.label === getCreateLabel(searchTerm.trim());
-                                        return (
-                                            <ActionsheetItem onPress={() => handleSelect(item.id)}>
-                                                <HStack className="flex-row items-center justify-between w-full">
-                                                    <HStack className="items-center gap-2">
-                                                        {isSelected
-                                                            ? <CircleCheckBig size={18} color={textPrimary} />
-                                                            : isCreateOption
-                                                                ? <CirclePlus size={18} color={textSecondary} />
-                                                                : <Circle size={18} color={textSecondary} />
-                                                        }
-                                                        <ActionsheetItemText>{item.label}</ActionsheetItemText>
-                                                    </HStack>
-                                                    <ChevronRight color={textPrimary} />
-                                                </HStack>
-                                            </ActionsheetItem>
-                                        );
-                                    }}
-                                    ListEmptyComponent={
-                                        <Box className="p-4 items-center">
-                                            <Text style={{ color: textSecondary }}>Nenhum resultado encontrado</Text>
-                                        </Box>
-                                    }
-                                />
-                            </Box>
-                        </Box>
-                    </Animated.View>
-                </ActionsheetContent>
-            </Actionsheet>
+            <SearchableSelectSheet
+                isOpen={showSheet}
+                onClose={handleClose}
+                onSelect={(id) => onChange(id)}
+                options={normalizedOptions}
+                value={value}
+                searchPlaceholder={searchPlaceholder}
+                themeColors={themeColors}
+                autoFocusSearch={autoFocusSearch}
+                fixedHeight={fixedHeight}
+                actionSheetContentStyle={actionSheetContentStyle}
+                inputContainerStyle={inputContainerStyle}
+                allowCreateOption={allowCreateOption}
+                getCreateLabel={getCreateLabel}
+            />
         </FormControl>
     );
 }

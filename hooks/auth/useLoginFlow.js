@@ -18,7 +18,7 @@ export function useLoginFlow() {
 	const [smartStatus, setSmartStatus] = useState("authenticating");
 	const [smartError, setSmartError] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
-	const [rememberLogin, setRememberLogin] = useState(false);
+	const [rememberLogin, setRememberLogin] = useState(true);
 	const hasStartedAutoAuth = useRef(false);
 
 	const savedDisplayName = useMemo(() => {

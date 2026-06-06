@@ -1,10 +1,12 @@
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useNavigation } from "expo-router";
 import { useSelectorOverlay } from "@/state/SelectorOverlayContext";
 import { useTheme } from "@/components/ui/gluestack-ui-provider/ThemeProvider/ThemeProvider";
 import { getThemeColors } from "@/constants/colors";
+import { BankSelectorButton } from "@/components/finance/insert/BankSelectorButton";
 
 import { VStack } from "@/components/ui/vstack";
 import { HStack } from "@/components/ui/hstack";
@@ -31,6 +33,7 @@ export default function Insert() {
 	const { active: isSelectorOpen } = useSelectorOverlay();
 	const isDarkMode = theme === "dark";
 	const themeColors = getThemeColors(theme);
+	const navigation = useNavigation();
 
 	const {
 		form,
@@ -47,6 +50,8 @@ export default function Insert() {
 		handleSave,
 		handleBack,
 		family,
+		selectedCatalogBanco,
+		handleBancoSelect,
 	} = useInsertForm();
 
 	const { control, handleSubmit, formState: { errors }, setValue, watch } = form;
@@ -55,6 +60,7 @@ export default function Insert() {
 	const recurrenceMode = watch("recurrence_mode");
 	const shareWithFamily = watch("share_with_family");
 	const recurrenceFrequency = watch("recurrence_frequency");
+	const idBanco = watch("id_banco");
 
 	const recurrenceFrequencyLabel =
 		recurrenceFrequency === "semanal"
@@ -67,6 +73,19 @@ export default function Insert() {
 		() => ({ paddingBottom: Math.max(insets.bottom, 12) + 8 }),
 		[insets.bottom]
 	);
+
+	useEffect(() => {
+		navigation.setOptions({
+			headerRight: () => (
+				<BankSelectorButton
+					selectedCatalogBanco={selectedCatalogBanco ?? null}
+					onSelect={handleBancoSelect}
+					themeColors={themeColors}
+					actionSheetContentStyle={actionSheetContentStyle}
+				/>
+			),
+		});
+	}, [selectedCatalogBanco, handleBancoSelect, themeColors, actionSheetContentStyle]);
 
 	const shouldShowSkeleton = isLoading || isBooting;
 

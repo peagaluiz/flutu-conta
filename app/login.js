@@ -1,6 +1,7 @@
 import { useForm } from "react-hook-form";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/components/ui/gluestack-ui-provider/ThemeProvider/ThemeProvider";
+import { useKeyboardSpacer } from "@/hooks/useKeyboardSpacer";
 import { getThemeColors } from "@/constants/colors";
 import { LoginAnimatedShell } from "@/components/auth/login/LoginAnimatedShell";
 import { LoginLoadingCard } from "@/components/auth/login/LoginLoadingCard";
@@ -9,9 +10,9 @@ import { LoginFormCard } from "@/components/auth/login/LoginFormCard";
 import * as yup from "yup";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { useRouter } from "expo-router";
-import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { useLoginAnimation } from "@/hooks/auth/useLoginAnimation";
 import { useLoginFlow } from "@/hooks/auth/useLoginFlow";
+import { Box } from "@/components/ui/box";
 
 const loginSchema = yup.object({
 	email: yup.string().required("O campo Email e obrigatorio"),
@@ -24,6 +25,7 @@ export default function Login() {
 	const colors = getThemeColors(theme);
 	const insets = useSafeAreaInsets();
 	const sheetAnimatedStyle = useLoginAnimation();
+	const { spacer: KeyboardSpacer } = useKeyboardSpacer({ multiplier: 0.35 });
 
 	const {
 		mode,
@@ -64,14 +66,7 @@ export default function Login() {
 	};
 
 	return (
-		<KeyboardAwareScrollView
-			className="w-full"
-			style={{ backgroundColor: colors.screen }}
-			contentContainerStyle={{ flexGrow: 1 }}
-			extraScrollHeight={10}
-			keyboardShouldPersistTaps="handled"
-			enableOnAndroid
-		>
+		<Box className="flex-1" style={{ flexGrow: 1 }}>
 			<LoginAnimatedShell
 				colors={colors}
 				insets={insets}
@@ -105,7 +100,9 @@ export default function Login() {
 						onForgotPassword={() => router.push("/recuperar-senha")}
 					/>
 				)}
+
+				{KeyboardSpacer}
 			</LoginAnimatedShell>
-		</KeyboardAwareScrollView>
+		</Box>
 	);
 }

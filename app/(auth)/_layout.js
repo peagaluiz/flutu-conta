@@ -4,6 +4,7 @@ import { StyleSheet, View } from "react-native";
 import { useTheme } from "@/components/ui/gluestack-ui-provider/ThemeProvider/ThemeProvider";
 import { useAuth } from "@/state/AuthContext";
 import { Redirect, Stack } from "expo-router";
+import { FinanceDateProvider } from "@/state/FinanceDateContext";
 import Animated, {
 	useSharedValue,
 	useAnimatedStyle,
@@ -13,12 +14,15 @@ import Animated, {
 import Loader from "@/components/ui/loader";
 import { useDatabase } from "@/hooks/useDatabase";
 import { useNavReady } from "@/state/NavigationContext";
+import { SyncProgressProvider, useSyncProgress } from "@/state/SyncProgressContext";
+import { setupSyncNotificationChannel, requestSyncNotificationPermission } from "@/services/syncNotificationService";
 
-export default function StackLayout() {
+function StackLayoutInner() {
 	const { isLoggedIn, isReady } = useAuth();
 	const { theme } = useTheme();
 	const database = useDatabase();
 	const signalNavReady = useNavReady();
+	const { startSync, endSync, updateStep } = useSyncProgress();
 	const didAutoSyncRef = useRef(false);
 	const navReadySignaledRef = useRef(false);
 	const isDarkMode = theme === "dark";
@@ -32,10 +36,19 @@ export default function StackLayout() {
 	}));
 
 	useEffect(() => {
+		setupSyncNotificationChannel();
+		requestSyncNotificationPermission();
+	}, []);
+
+	useEffect(() => {
 		if (!isReady || !isLoggedIn || didAutoSyncRef.current) return;
 		didAutoSyncRef.current = true;
-		database.syncAllPendingData({ force: true }).catch(() => {});
-	}, [database, isLoggedIn, isReady]);
+		startSync("Sincronizando dados...");
+		database.syncAllPendingData({ force: true, onProgress: updateStep })
+			.catch(() => {})
+			.finally(() => endSync());
+		database.fetchAndCacheCatalog().catch(() => {});
+	}, [database, endSync, isLoggedIn, isReady, startSync, updateStep]);
 
 	// Caso não logado: sinaliza navReady imediatamente para a splash desaparecer
 	useEffect(() => {
@@ -69,6 +82,7 @@ export default function StackLayout() {
 	}
 
 	return (
+		<FinanceDateProvider>
 		<View style={{ flex: 1 }}>
 			<Stack screenOptions={{ headerBackVisible: false, animation: "none" }}>
 				<Stack.Screen name="(stack)" options={{ headerShown: false }} />
@@ -99,5 +113,14 @@ export default function StackLayout() {
 				</Animated.View>
 			)}
 		</View>
+		</FinanceDateProvider>
+	);
+}
+
+export default function StackLayout() {
+	return (
+		<SyncProgressProvider>
+			<StackLayoutInner />
+		</SyncProgressProvider>
 	);
 }

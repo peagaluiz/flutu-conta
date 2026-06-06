@@ -134,6 +134,7 @@ async function insertTransacaoLocal(
         id_pessoa,
         pessoa,
         id_imobilizado,
+        id_banco,
 		family_id,
 		is_family_shared,
 		user_id,
@@ -148,7 +149,7 @@ async function insertTransacaoLocal(
         sync_status,
         synced,
         deleted
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
 		null,
 		data.tipo,
@@ -157,6 +158,7 @@ async function insertTransacaoLocal(
 		data.id_pessoa ?? null,
 		data.pessoa ?? null,
 		data.id_imobilizado ?? null,
+		data.id_banco ?? null,
 		data.family_id ?? null,
 		Number(data.is_family_shared ?? 0),
 		data.user_id ?? null,
@@ -274,6 +276,7 @@ export function createTransacoesRepository() {
               id_pessoa = ?,
               pessoa = ?,
               id_imobilizado = ?,
+              id_banco = ?,
 			  family_id = ?,
 			  is_family_shared = ?,
 			  user_id = COALESCE(?, user_id),
@@ -281,6 +284,7 @@ export function createTransacoesRepository() {
               data_vencimento = ?,
               status = COALESCE(?, status),
               observacao = ?,
+              json = ?,
               updated_at = ?,
               sync_status = 'pending',
               synced = 0
@@ -292,6 +296,7 @@ export function createTransacoesRepository() {
 				data.id_pessoa ?? null,
 				data.pessoa ?? null,
 				data.id_imobilizado ?? null,
+				data.id_banco ?? null,
 				data.family_id ?? null,
 				Number(data.is_family_shared ?? 0),
 				data.user_id ?? null,
@@ -299,6 +304,7 @@ export function createTransacoesRepository() {
 				data.data_vencimento ?? null,
 				data.status ?? null,
 				data.observacao ?? null,
+				data.json ?? null,
 				nowISO(),
 				id_transacao
 			);
@@ -372,11 +378,11 @@ export function createTransacoesRepository() {
 				}
 
 				if (params?.dateFrom) {
-					query = query.gte("data_transacao", params.dateFrom);
+					query = query.or(`data_vencimento.gte.${params.dateFrom},and(data_vencimento.is.null,data_transacao.gte.${params.dateFrom})`);
 				}
 
 				if (params?.dateTo) {
-					query = query.lte("data_transacao", params.dateTo);
+					query = query.or(`data_vencimento.lte.${params.dateTo},and(data_vencimento.is.null,data_transacao.lte.${params.dateTo})`);
 				}
 
 				if (!id && params?.page && params?.limit) {
@@ -478,8 +484,8 @@ export function createTransacoesRepository() {
 					AND r.deleted = 0
 				WHERE t.deleted = 0
 				  AND ${localVisibility.where}
-				  ${params?.dateFrom ? "AND substr(t.data_transacao, 1, 10) >= ?" : ""}
-				  ${params?.dateTo ? "AND substr(t.data_transacao, 1, 10) <= ?" : ""}
+				  ${params?.dateFrom ? "AND substr(COALESCE(t.data_vencimento, t.data_transacao), 1, 10) >= ?" : ""}
+				  ${params?.dateTo ? "AND substr(COALESCE(t.data_vencimento, t.data_transacao), 1, 10) <= ?" : ""}
 				ORDER BY t.id_transacao DESC
 				LIMIT ? OFFSET ?
 			`,
@@ -495,7 +501,7 @@ export function createTransacoesRepository() {
 
 		syncPendingTransacoes,
 
-			syncAllPendingData: async (options?: { force?: boolean }) => {
+			syncAllPendingData: async (options?: { force?: boolean; onProgress?: (step: string) => void }) => {
 				const summary = await syncAllPendingData(options);
 				if (Platform.OS !== "web") {
 					await validateAndGeneratePendingRecurrences();

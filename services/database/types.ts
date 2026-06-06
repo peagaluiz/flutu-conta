@@ -7,6 +7,7 @@ export type TransacaoDatabase = {
 	id_pessoa: number | null;
 	pessoa: string | null;
 	id_imobilizado: number | null;
+	id_banco?: number | null;
 	family_id?: number | null;
 	is_family_shared?: number;
 	user_id?: string | null;

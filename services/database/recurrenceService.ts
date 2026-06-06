@@ -368,7 +368,31 @@ function getValidationHorizon(todayISO: string, frequency: RecurrenceFrequency) 
 	return toISODate(addMonthsClamped(today, 1));
 }
 
+let recurrenceGenerationInFlight: Promise<{ generated: number; validated: number }> | null = null;
+
 export async function validateAndGeneratePendingRecurrences(options?: {
+	referenceDate?: string | null;
+	visibilityScope?: VisibilityScope;
+	userId?: string | null;
+	familyId?: number | null;
+}) {
+	if (!db || Platform.OS === "web") {
+		return { generated: 0, validated: 0 };
+	}
+
+	if (recurrenceGenerationInFlight) {
+		return recurrenceGenerationInFlight;
+	}
+
+	recurrenceGenerationInFlight = _validateAndGeneratePendingRecurrences(options);
+	try {
+		return await recurrenceGenerationInFlight;
+	} finally {
+		recurrenceGenerationInFlight = null;
+	}
+}
+
+async function _validateAndGeneratePendingRecurrences(options?: {
 	referenceDate?: string | null;
 	visibilityScope?: VisibilityScope;
 	userId?: string | null;

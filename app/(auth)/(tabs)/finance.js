@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshControl, ScrollView } from "react-native";
+import { RefreshControl, ScrollView, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Box } from "@/components/ui/box";
 import { HStack } from "@/components/ui/hstack";
@@ -19,25 +19,19 @@ import { useTheme } from "@/components/ui/gluestack-ui-provider/ThemeProvider/Th
 import { getThemeColors } from "@/constants/colors";
 import { useDatabase } from "@/hooks/useDatabase";
 import { useAuth } from "@/state/AuthContext";
-import { formatCurrency } from "@/utils/finance/helpers";
+import { useFinanceDate } from "@/state/FinanceDateContext";
+import { formatCurrency, formatDate } from "@/utils/finance/helpers";
 import {
 	applyVisibilityScopeFilter,
-	applyRangeFilter,
 	buildCategoryExpenses,
-	buildMonthlySeries,
 	buildResumoGeral,
 	finalizeResumo,
+	normalizeTransactions,
 } from "@/utils/finance/dashboardHelpers";
 import { FinanceResumoSection } from "@/components/finance/dashboard/FinanceResumoSection";
 import { FinanceMonthlyChartSection } from "@/components/finance/dashboard/FinanceMonthlyChartSection";
 import { FinanceCategoryChartSection } from "@/components/finance/dashboard/FinanceCategoryChartSection";
-
-const RANGE_OPTIONS = [
-	{ value: "30d", label: "30d" },
-	{ value: "90d", label: "90d" },
-	{ value: "365d", label: "1 ano" },
-	{ value: "all", label: "Tudo" },
-];
+import { useSyncProgress } from "@/state/SyncProgressContext";
 
 const VISIBILITY_OPTIONS = [
 	{ value: "all", label: "Todos" },
@@ -57,14 +51,16 @@ function FinanceSkeleton() {
 
 export default function Finance() {
 	const insets = useSafeAreaInsets();
+	const { height: screenHeight } = useWindowDimensions();
 	const { theme } = useTheme();
 	const colors = getThemeColors(theme);
 	const database = useDatabase();
 	const { userData, family } = useAuth();
+	const { dateRange } = useFinanceDate();
 
+	const { startSync, endSync, updateStep } = useSyncProgress();
 	const [loading, setLoading] = useState(true);
 	const [refreshing, setRefreshing] = useState(false);
-	const [range, setRange] = useState("90d");
 	const [visibilityScope, setVisibilityScope] = useState("all");
 	const [items, setItems] = useState([]);
 	const [detailSheetOpen, setDetailSheetOpen] = useState(false);
@@ -83,24 +79,16 @@ export default function Finance() {
 				activeFamilyId,
 				userData?.id || null
 			),
-		[
-			activeFamilyId,
-			canUseFamilyScope,
-			items,
-			userData?.id,
-			visibilityScope,
-		]
+		[activeFamilyId, canUseFamilyScope, items, userData?.id, visibilityScope]
 	);
+
 	const filteredItems = useMemo(
-		() => applyRangeFilter(scopedItems, range),
-		[scopedItems, range]
+		() => normalizeTransactions(scopedItems, { familyId: activeFamilyId }),
+		[scopedItems, activeFamilyId]
 	);
+
 	const resumo = useMemo(
 		() => finalizeResumo(buildResumoGeral(filteredItems)),
-		[filteredItems]
-	);
-	const monthlySeries = useMemo(
-		() => buildMonthlySeries(filteredItems),
 		[filteredItems]
 	);
 	const categorySeries = useMemo(
@@ -120,10 +108,10 @@ export default function Finance() {
 				if (!silent) setLoading(true);
 				const data = await database.getTransacao(undefined, {
 					page: 1,
-					limit: 250,
-					visibilityScope: canUseFamilyScope
-						? visibilityScope
-						: "mine",
+					limit: 500,
+					dateFrom: dateRange.start,
+					dateTo: dateRange.end,
+					visibilityScope: canUseFamilyScope ? visibilityScope : "mine",
 					userId: userData?.id ?? null,
 					familyId: activeFamilyId,
 				});
@@ -138,6 +126,8 @@ export default function Finance() {
 			activeFamilyId,
 			canUseFamilyScope,
 			database,
+			dateRange.end,
+			dateRange.start,
 			userData?.id,
 			visibilityScope,
 		]
@@ -155,15 +145,15 @@ export default function Finance() {
 
 	const onRefresh = async () => {
 		setRefreshing(true);
+		startSync("Sincronizando dados...");
 		try {
-			await database.syncAllPendingData({ force: true });
+			await database.syncAllPendingData({ force: true, onProgress: updateStep });
 			await loadData(true);
 		} finally {
 			setRefreshing(false);
+			endSync();
 		}
 	};
-
-	const bottomSpacing = insets.bottom + 96;
 
 	return (
 		<>
@@ -171,7 +161,7 @@ export default function Finance() {
 				style={{ backgroundColor: colors.screen }}
 				contentContainerStyle={{
 					flexGrow: 1,
-					paddingBottom: bottomSpacing,
+					paddingBottom: insets.bottom + 96,
 				}}
 				refreshControl={
 					<RefreshControl
@@ -181,107 +171,61 @@ export default function Finance() {
 				}
 			>
 				<Box className="gap-4 px-3 pt-3" style={{ minHeight: "100%" }}>
-					<Box
-						className="rounded-xl border p-3"
-						style={{
-							backgroundColor: colors.surface,
-							borderColor: colors.border,
-						}}
-					>
-						<HStack className="items-center justify-between">
-							<Text
-								className="text-sm font-semibold"
-								style={{ color: colors.textPrimary }}
-							>
-								Data
-							</Text>
-
-							<HStack className="gap-2">
-								{RANGE_OPTIONS.map((option) => {
-									const active = option.value === range;
-									return (
-										<Pressable
-											key={option.value}
-											onPress={() =>
-												setRange(option.value)
-											}
-										>
-											<Box
-												className="rounded-full border px-3 py-1"
-												style={{
-													borderColor: active
-														? colors.textPrimary
-														: colors.border,
-													backgroundColor: active
-														? colors.textPrimary
-														: colors.surface,
-												}}
+					{canUseFamilyScope && (
+						<Box
+							className="rounded-xl border p-3"
+							style={{
+								backgroundColor: colors.surface,
+								borderColor: colors.border,
+							}}
+						>
+							<HStack className="items-center justify-between">
+								<Text
+									className="text-sm font-semibold"
+									style={{ color: colors.textPrimary }}
+								>
+									Família
+								</Text>
+								<HStack className="gap-2">
+									{VISIBILITY_OPTIONS.map((option) => {
+										const active =
+											option.value === visibilityScope;
+										return (
+											<Pressable
+												key={option.value}
+												onPress={() =>
+													setVisibilityScope(option.value)
+												}
 											>
-												<Text
-													className="text-xs font-medium"
+												<Box
+													className="rounded-full border px-3 py-1"
 													style={{
-														color: active
-															? colors.surface
-															: colors.textSecondary,
+														borderColor: active
+															? colors.textPrimary
+															: colors.border,
+														backgroundColor: active
+															? colors.textPrimary
+															: colors.surface,
 													}}
 												>
-													{option.label}
-												</Text>
-											</Box>
-										</Pressable>
-									);
-								})}
+													<Text
+														className="text-xs font-medium"
+														style={{
+															color: active
+																? colors.surface
+																: colors.textSecondary,
+														}}
+													>
+														{option.label}
+													</Text>
+												</Box>
+											</Pressable>
+										);
+									})}
+								</HStack>
 							</HStack>
-						</HStack>
-
-						{canUseFamilyScope && (
-						<HStack className="items-center justify-between mt-3">
-							<Text
-								className="text-sm font-semibold"
-								style={{ color: colors.textPrimary }}
-							>
-								Família
-							</Text>
-							<HStack className="gap-2">
-								{VISIBILITY_OPTIONS.map((option) => {
-									const active =
-										option.value === visibilityScope;
-									return (
-										<Pressable
-											key={option.value}
-											onPress={() =>
-												setVisibilityScope(option.value)
-											}
-										>
-											<Box
-												className="rounded-full border px-3 py-1"
-												style={{
-													borderColor: active
-														? colors.textPrimary
-														: colors.border,
-													backgroundColor: active
-														? colors.textPrimary
-														: colors.surface,
-												}}
-											>
-												<Text
-													className="text-xs font-medium"
-													style={{
-														color: active
-															? colors.surface
-															: colors.textSecondary,
-													}}
-												>
-													{option.label}
-												</Text>
-											</Box>
-										</Pressable>
-									);
-								})}
-							</HStack>
-						</HStack>
-						)}
-					</Box>
+						</Box>
+					)}
 
 					{loading ? (
 						<FinanceSkeleton />
@@ -291,10 +235,7 @@ export default function Finance() {
 								resumo={resumo}
 								colors={colors}
 								onPressSaldo={() =>
-									openDetails(
-										"Saldo consolidado",
-										filteredItems
-									)
+									openDetails("Saldo consolidado", filteredItems)
 								}
 								onPressEntradas={() =>
 									openDetails(
@@ -322,17 +263,10 @@ export default function Finance() {
 								}
 							/>
 							<FinanceMonthlyChartSection
-								series={monthlySeries}
+								items={filteredItems}
 								colors={colors}
-								onPressMonth={(monthKey) =>
-									openDetails(
-										`Detalhes de ${monthKey}`,
-										filteredItems.filter((item) =>
-											String(
-												item.referenceDate || ""
-											).startsWith(monthKey)
-										)
-									)
+								onPressGroup={(label, groupItems) =>
+									openDetails(label, groupItems)
 								}
 							/>
 							<FinanceCategoryChartSection
@@ -382,50 +316,53 @@ export default function Finance() {
 						</Text>
 					</Box>
 
-					{detailItems.length === 0 ? (
-						<ActionsheetItem isDisabled>
-							<ActionsheetItemText>
-								Sem itens para exibir.
-							</ActionsheetItemText>
-						</ActionsheetItem>
-					) : (
-						detailItems.slice(0, 80).map((item) => (
-							<ActionsheetItem
-								key={`detail-${item.id_transacao}`}
-							>
-								<Box className="w-full">
-									<HStack className="items-center justify-between">
-										<Text
-											style={{
-												color: colors.textPrimary,
-											}}
-										>
-											{item.categoria || "Sem categoria"}
-										</Text>
-										<Text
-											style={{
-												color:
-													item.tipo === "receber"
-														? "#16A34A"
-														: "#DC2626",
-											}}
-										>
-											{formatCurrency(
-												Number(item.valor || 0)
-											)}
-										</Text>
-									</HStack>
-									<Text
-										className="text-xs"
-										style={{ color: colors.textSecondary }}
-									>
-										{item.pessoa || "Sem pessoa"} •{" "}
-										{item.referenceDate || "sem data"}
-									</Text>
-								</Box>
+					<ScrollView
+						style={{
+							width: "100%",
+							minHeight: screenHeight * 0.38,
+							maxHeight: screenHeight * 0.56,
+						}}
+						showsVerticalScrollIndicator={false}
+					>
+						{detailItems.length === 0 ? (
+							<ActionsheetItem isDisabled>
+								<ActionsheetItemText>
+									Sem itens para exibir.
+								</ActionsheetItemText>
 							</ActionsheetItem>
-						))
-					)}
+						) : (
+							detailItems.slice(0, 80).map((item) => (
+								<ActionsheetItem key={`detail-${item.id_transacao}`}>
+									<Box className="w-full">
+										<HStack className="items-center justify-between">
+											<Text style={{ color: colors.textPrimary }}>
+												{item.categoria || "Sem categoria"}
+											</Text>
+											<Text
+												style={{
+													color:
+														item.tipo === "receber"
+															? "#16A34A"
+															: "#DC2626",
+												}}
+											>
+												{formatCurrency(
+													Number(item.valor || 0)
+												)}
+											</Text>
+										</HStack>
+										<Text
+											className="text-xs"
+											style={{ color: colors.textSecondary }}
+										>
+											{item.pessoa || "Sem pessoa"} •{" "}
+											{item.referenceDate ? formatDate(item.referenceDate) : "sem data"}
+										</Text>
+									</Box>
+								</ActionsheetItem>
+							))
+						)}
+					</ScrollView>
 				</ActionsheetContent>
 			</Actionsheet>
 		</>

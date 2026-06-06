@@ -255,12 +255,6 @@ export function ResumoFinanceiroCard({
 						Aqui está seu resumo financeiro mais importante, sem
 						poluição visual.
 					</Text>
-					<Text
-						className="text-xs"
-						style={{ color: colors.textSecondary }}
-					>
-						Período {dateRangeLabel || "atual"}
-					</Text>
 				</Box>
 
 				{/* Values */}

@@ -18,6 +18,26 @@ export const categorias = [
 	"Salário",
 	"Investimentos",
 	"Outros",
+	"Outros2",
+	"Outros23",
+	"Outros234",
+	"Outros2345",
+	"Outros23456",
+	"Outros1",
+	"Outros3",
+	"Outros4",
+	"Outros5",
+	"Outros6",
+	"Outros7",
+	"Outros81",
+	"Outros91",
+	"Outr7os1",
+	"Outr5os1",
+	"Outros51",
+	"Outros441",
+	"Outros41",
+	"Outro1s1",
+	"Outros21",
 ];
 
 export const insertSchema = yup.object().shape({
@@ -53,6 +73,7 @@ export const insertSchema = yup.object().shape({
 		.oneOf(["pendente", "pago"]),
 	share_with_family: yup.boolean().default(false),
 	observacao: yup.string().nullable(),
+	id_banco: yup.number().nullable().optional(),
 });
 
 export function parseBrNumber(value) {
@@ -67,6 +88,11 @@ export function normalizeDate(value) {
 
 	if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
 		return value;
+	}
+
+	// ISO timestamp: "2026-06-06T00:00:00Z", "2026-06-06T03:00:00+00:00", etc.
+	if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
+		return value.slice(0, 10);
 	}
 
 	if (typeof value === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(value)) {

@@ -3,10 +3,12 @@ import { Alert } from "react-native";
 import { loadSectionData } from "@/utils/auth/launches/loaders";
 import { getDeleteAction, getItemKey, filterValidItems } from "@/utils/auth/launches/actions";
 import { getItemType } from "@/utils/auth/launches/sections";
+import { useSyncProgress } from "@/state/SyncProgressContext";
 
 const PAGE_SIZE = 30;
 
 export function useLaunchesData({ database, section, family, userData }) {
+	const { startSync, endSync, updateStep } = useSyncProgress();
 	const [items, setItems] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [refreshing, setRefreshing] = useState(false);
@@ -92,8 +94,9 @@ export function useLaunchesData({ database, section, family, userData }) {
 
 	const onRefresh = useCallback(async () => {
 		setRefreshing(true);
+		startSync("Sincronizando dados...");
 		try {
-			await database.syncAllPendingData({ force: true });
+			await database.syncAllPendingData({ force: true, onProgress: updateStep });
 			setPage(1);
 			setHasMore(true);
 			await loadData(section, { silent: true, page: 1 });
@@ -101,8 +104,9 @@ export function useLaunchesData({ database, section, family, userData }) {
 			// mantém a tela responsiva
 		} finally {
 			setRefreshing(false);
+			endSync();
 		}
-	}, [database, loadData, section]);
+	}, [database, endSync, loadData, section, startSync, updateStep]);
 
 	const handleLoadMore = useCallback(() => {
 		if (section !== "transacoes") return;

@@ -25,6 +25,7 @@ import LaunchesHeader from "@/components/auth/launches/LaunchesHeader";
 import LaunchesListEmpty from "@/components/auth/launches/LaunchesListEmpty";
 import LaunchesFooterLoader from "@/components/auth/launches/LaunchesFooterLoader";
 import LaunchesEditorModal from "@/components/auth/launches/LaunchesEditorModal";
+import BancoCatalogoSheet from "@/components/auth/launches/BancoCatalogoSheet";
 
 const ItemSeparator = () => <Box style={{ height: 10 }} />;
 
@@ -70,6 +71,9 @@ export default function Launches() {
 		openEdit,
 		selectPessoaOption,
 		saveEditor,
+		catalogSheetOpen,
+		closeCatalogSheet,
+		createBancoFromCatalog,
 	} = useLaunchesEditor({ database, section, family, userData, loadData });
 
 	const handleCreate = useCallback(() => {
@@ -213,6 +217,16 @@ export default function Launches() {
 				savingEditor={savingEditor}
 				onSave={saveEditor}
 				family={family}
+				colors={colors}
+			/>
+
+			<BancoCatalogoSheet
+				isOpen={catalogSheetOpen}
+				onClose={closeCatalogSheet}
+				onSelect={async (item) => {
+					closeCatalogSheet();
+					await createBancoFromCatalog(item);
+				}}
 				colors={colors}
 			/>
 		</Box>

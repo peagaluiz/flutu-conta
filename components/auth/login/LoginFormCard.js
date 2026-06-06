@@ -57,50 +57,52 @@ export function LoginFormCard({
 				</VStack>
 			</Animated.View>
 
-			<Animated.View entering={item(1)}>
-				<Controller
-					control={control}
-					name="email"
-					render={({ field: { onChange, onBlur, value } }) => (
-						<MaskedFormInput
-							value={value}
-							onChange={onChange}
-							onBlur={onBlur}
-							error={errors.email}
-							placeholder="Email"
-							icon={Mail}
-							iconColor={colors.textSecondary}
-							focusIconColor={colors.brand}
-							focusBorderColor={colors.brand}
-							inputContainerStyle={inputStyle}
-							isRequired
-						/>
-					)}
-				/>
-			</Animated.View>
+			<VStack style={{ gap: 2 }}>
+				<Animated.View entering={item(1)}>
+					<Controller
+						control={control}
+						name="email"
+						render={({ field: { onChange, onBlur, value } }) => (
+							<MaskedFormInput
+								value={value}
+								onChange={onChange}
+								onBlur={onBlur}
+								error={errors.email}
+								placeholder="Email"
+								icon={Mail}
+								iconColor={colors.textSecondary}
+								focusIconColor={colors.brand}
+								focusBorderColor={colors.brand}
+								inputContainerStyle={inputStyle}
+								isRequired
+							/>
+						)}
+					/>
+				</Animated.View>
 
-			<Animated.View entering={item(2)}>
-				<Controller
-					control={control}
-					name="senha"
-					render={({ field: { onChange, onBlur, value } }) => (
-						<MaskedFormInput
-							value={value}
-							onChange={onChange}
-							onBlur={onBlur}
-							error={errors.senha}
-							placeholder="Senha"
-							icon={Lock}
-							iconColor={colors.textSecondary}
-							focusIconColor={colors.brand}
-							focusBorderColor={colors.brand}
-							inputContainerStyle={inputStyle}
-							isPassword
-							isRequired
-						/>
-					)}
-				/>
-			</Animated.View>
+				<Animated.View entering={item(2)}>
+					<Controller
+						control={control}
+						name="senha"
+						render={({ field: { onChange, onBlur, value } }) => (
+							<MaskedFormInput
+								value={value}
+								onChange={onChange}
+								onBlur={onBlur}
+								error={errors.senha}
+								placeholder="Senha"
+								icon={Lock}
+								iconColor={colors.textSecondary}
+								focusIconColor={colors.brand}
+								focusBorderColor={colors.brand}
+								inputContainerStyle={inputStyle}
+								isPassword
+								isRequired
+							/>
+						)}
+					/>
+				</Animated.View>
+			</VStack>
 
 			{/* Card salvar login */}
 			<Animated.View entering={item(3)}>
