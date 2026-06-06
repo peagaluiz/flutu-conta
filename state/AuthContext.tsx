@@ -25,7 +25,7 @@ import {
     leaveFamily,
     removeFamilyMember,
     transferOwnership,
-} from "@/services/family/familyRepository";
+} from "@/services/supabase/familyRepository";
 
 type FamilyInfo = {
     id: number;
@@ -62,6 +62,8 @@ type AuthState = {
     logOut: () => Promise<void>;
     userData: User | null;
     updateUserProfile: (nome: string) => Promise<void>;
+    updateUserAvatar: (base64Data: string, mimeType?: string) => Promise<void>;
+    removeUserAvatar: () => Promise<void>;
     requestPasswordReset: (email: string) => Promise<void>;
     establishRecoverySessionFromUrl: (url: string) => Promise<void>;
     updatePassword: (newPassword: string) => Promise<void>;
@@ -235,6 +237,61 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setUser((prev) => (prev ? { ...prev, nome } : null));
     }
 
+    async function updateUserAvatar(base64Data: string, mimeType: string = "image/jpeg") {
+        if (!user) throw new Error("Usuário não autenticado");
+
+        const ext = mimeType === "image/png" ? "png" : "jpg";
+        const fileName = `${user.id}.${ext}`;
+
+        // base64 → Uint8Array (sem fetch de URI local, que falha no React Native)
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        const { error: uploadError } = await supabase.storage
+            .from("avatars")
+            .upload(fileName, bytes, { upsert: true, contentType: mimeType });
+
+        if (uploadError) throw new Error(uploadError.message);
+
+        const { data: { publicUrl } } = supabase.storage
+            .from("avatars")
+            .getPublicUrl(fileName);
+
+        // Salva com cache-bust nos metadados para que o reload do app
+        // carregue a URL nova (evita o React Native servir imagem antiga do cache)
+        const avatarUrl = `${publicUrl}?t=${Date.now()}`;
+
+        const { error } = await supabase.auth.updateUser({
+            data: { avatar_url: avatarUrl },
+        });
+
+        if (error) throw new Error(error.message);
+
+        setUser((prev) => (prev ? { ...prev, avatarUrl } : null));
+    }
+
+    async function removeUserAvatar() {
+        if (!user) throw new Error("Usuário não autenticado");
+
+        const extensions = ["jpg", "jpeg", "png", "webp"];
+        await Promise.allSettled(
+            extensions.map((ext) =>
+                supabase.storage.from("avatars").remove([`${user.id}.${ext}`])
+            )
+        );
+
+        const { error } = await supabase.auth.updateUser({
+            data: { avatar_url: null },
+        });
+
+        if (error) throw new Error(error.message);
+
+        setUser((prev) => (prev ? { ...prev, avatarUrl: null } : null));
+    }
+
     async function requestPasswordReset(email: string) {
         await requestPasswordResetService(email);
     }
@@ -307,7 +364,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             data: { subscription },
         } = supabase.auth.onAuthStateChange((_event, session) => {
             const nextUser = mapSessionToUser(session);
-            setUser(nextUser);
+            setUser((prev) => {
+                if (!nextUser) return null;
+                // Preserva avatarUrl já salvo caso a sessão ainda não reflita o upload
+                return {
+                    ...nextUser,
+                    avatarUrl: nextUser.avatarUrl ?? prev?.avatarUrl ?? null,
+                };
+            });
             setIsLoggedIn(Boolean(nextUser));
             setIsReady(true);
         });
@@ -339,6 +403,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 logOut,
                 userData: user,
                 updateUserProfile,
+                updateUserAvatar,
+                removeUserAvatar,
                 requestPasswordReset,
                 establishRecoverySessionFromUrl,
                 updatePassword,

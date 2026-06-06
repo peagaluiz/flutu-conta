@@ -1,5 +1,5 @@
 import { Box } from "@/components/ui/box";
-import { VStack } from "@/components/ui/vstack";
+import { View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import Animated from "react-native-reanimated";
 
@@ -18,19 +18,33 @@ export function LoginAnimatedShell({
 				style={[
 					{
 						width: "100%",
-						borderTopLeftRadius: 28,
-						borderTopRightRadius: 28,
-						paddingTop: 32,
-						minHeight: "58%",
+						borderTopLeftRadius: 32,
+						borderTopRightRadius: 32,
+						paddingTop: 14,
+						paddingHorizontal: 35,
+						paddingBottom: 70,
 						backgroundColor: colors.surface,
+						shadowColor: "#000",
+						shadowOpacity: isDarkMode ? 0.7 : 0.18,
+						shadowRadius: 30,
+						shadowOffset: { width: 0, height: -16 },
+						elevation: 18,
 					},
 					sheetAnimatedStyle,
 				]}
-				className="px-6"
 			>
-				<VStack className="mx-2" space={4}>
-					{children}
-				</VStack>
+				<View
+					style={{
+						width: 42,
+						height: 5,
+						borderRadius: 9,
+						backgroundColor: colors.borderStrong,
+						opacity: 0.7,
+						alignSelf: "center",
+						marginBottom: 22,
+					}}
+				/>
+				{children}
 			</Animated.View>
 		</Box>
 	);

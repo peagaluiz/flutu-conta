@@ -2,117 +2,116 @@ import * as yup from "yup";
 import { createNumberMask } from "react-native-mask-input";
 import { brNumber } from "@/utils/validators/yupCustom";
 
-export const decimalMask = createNumberMask({ delimiter: ".", separator: ",", precision: 2 });
+export const decimalMask = createNumberMask({
+	delimiter: ".",
+	separator: ",",
+	precision: 2,
+});
 
 export const categorias = [
-  "Alimentação",
-  "Moradia",
-  "Transporte",
-  "Saúde",
-  "Educação",
-  "Lazer",
-  "Salário",
-  "Investimentos",
-  "Outros",
+	"Alimentação",
+	"Moradia",
+	"Transporte",
+	"Saúde",
+	"Educação",
+	"Lazer",
+	"Salário",
+	"Investimentos",
+	"Outros",
 ];
 
 export const insertSchema = yup.object().shape({
-  tipo: yup.string().required("Selecione o tipo").oneOf(["pagar", "receber"]),
-  valor: brNumber("Valor").required("O campo Valor é obrigatório"),
-  categoria: yup.string().required("O campo Categoria é obrigatório"),
-  descricao: yup.string().nullable(),
-  recurrence_mode: yup.string().required("Selecione o tipo de recorrência").oneOf(["unica", "recorrente"]),
-  recurrence_frequency: yup.string().when("recurrence_mode", {
-    is: "recorrente",
-    then: (schemaRef) =>
-      schemaRef.required("Selecione a frequência").oneOf(["semanal", "mensal", "anual", "dias"]),
-    otherwise: (schemaRef) => schemaRef.nullable().notRequired(),
-  }),
-  recurrence_end_date: yup.string().nullable(),
-  recurrence_interval_days: yup
-    .number()
-    .transform((value, originalValue) => {
-      if (typeof originalValue === "string") {
-        if (!originalValue.trim()) return undefined;
-        const parsed = Number(originalValue.replace(/\D/g, ""));
-        return Number.isNaN(parsed) ? undefined : parsed;
-      }
-      return value;
-    })
-    .when(["recurrence_mode", "recurrence_frequency"], {
-      is: (mode, frequency) => mode === "recorrente" && frequency === "dias",
-      then: (schemaRef) =>
-        schemaRef
-          .required("Informe o intervalo em dias")
-          .integer("Intervalo deve ser número inteiro")
-          .min(1, "Mínimo de 1 dia")
-          .max(365, "Máximo de 365 dias"),
-      otherwise: (schemaRef) => schemaRef.nullable().notRequired(),
-    }),
-  pessoa: yup.string().nullable(),
-  data_vencimento: yup.string().nullable(),
-  status: yup.string().required("Selecione o status").oneOf(["pendente", "pago"]),
-  share_with_family: yup.boolean().default(false),
-  observacao: yup.string().nullable(),
+	tipo: yup.string().required("Selecione o tipo").oneOf(["pagar", "receber"]),
+	valor: brNumber("Valor").required("O campo Valor é obrigatório"),
+	categoria: yup.string().required("O campo Categoria é obrigatório"),
+	descricao: yup.string().nullable(),
+	recurrence_mode: yup
+		.string()
+		.required("Selecione o tipo de recorrência")
+		.oneOf(["unica", "recorrente"]),
+	recurrence_frequency: yup.string().when("recurrence_mode", {
+		is: "recorrente",
+		then: (schemaRef) =>
+			schemaRef
+				.required("Selecione a frequência")
+				.oneOf(["semanal", "mensal", "anual"]),
+		otherwise: (schemaRef) => schemaRef.nullable().notRequired(),
+	}),
+	recurrence_end_date: yup.string().nullable(),
+	recurrence_skip_non_working: yup.boolean().default(false),
+	recurrence_skip_direction: yup.string().nullable().when("recurrence_skip_non_working", {
+		is: true,
+		then: (schemaRef) =>
+			schemaRef.required("Selecione antes ou depois").oneOf(["before", "after"]),
+		otherwise: (schemaRef) => schemaRef.nullable().notRequired(),
+	}),
+	pessoa: yup.string().nullable(),
+	data_vencimento: yup.string().nullable(),
+	status: yup
+		.string()
+		.required("Selecione o status")
+		.oneOf(["pendente", "pago"]),
+	share_with_family: yup.boolean().default(false),
+	observacao: yup.string().nullable(),
 });
 
 export function parseBrNumber(value) {
-  if (typeof value !== "string") return Number(value || 0);
-  const normalized = value.replace(/\./g, "").replace(",", ".");
-  const n = Number(normalized);
-  return Number.isNaN(n) ? 0 : n;
+	if (typeof value !== "string") return Number(value || 0);
+	const normalized = value.replace(/\./g, "").replace(",", ".");
+	const n = Number(normalized);
+	return Number.isNaN(n) ? 0 : n;
 }
 
 export function normalizeDate(value) {
-  if (!value) return null;
+	if (!value) return null;
 
-  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return value;
-  }
+	if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+		return value;
+	}
 
-  if (typeof value === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
-    const [dd, mm, yyyy] = value.split("/");
-    return `${yyyy}-${mm}-${dd}`;
-  }
+	if (typeof value === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
+		const [dd, mm, yyyy] = value.split("/");
+		return `${yyyy}-${mm}-${dd}`;
+	}
 
-  const onlyDigits = String(value).replace(/\D/g, "");
-  if (onlyDigits.length === 8) {
-    const dd = onlyDigits.slice(0, 2);
-    const mm = onlyDigits.slice(2, 4);
-    const yyyy = onlyDigits.slice(4, 8);
-    return `${yyyy}-${mm}-${dd}`;
-  }
+	const onlyDigits = String(value).replace(/\D/g, "");
+	if (onlyDigits.length === 8) {
+		const dd = onlyDigits.slice(0, 2);
+		const mm = onlyDigits.slice(2, 4);
+		const yyyy = onlyDigits.slice(4, 8);
+		return `${yyyy}-${mm}-${dd}`;
+	}
 
-  return null;
+	return null;
 }
 
 export function toISODate(dateObj) {
-  const yyyy = dateObj.getFullYear();
-  const mm = String(dateObj.getMonth() + 1).padStart(2, "0");
-  const dd = String(dateObj.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+	const yyyy = dateObj.getFullYear();
+	const mm = String(dateObj.getMonth() + 1).padStart(2, "0");
+	const dd = String(dateObj.getDate()).padStart(2, "0");
+	return `${yyyy}-${mm}-${dd}`;
 }
 
 export function formatDateDisplay(value) {
-  if (!value) return "Selecionar data";
-  const normalized = normalizeDate(value);
-  if (!normalized) return "Selecionar data";
+	if (!value) return "Selecionar data";
+	const normalized = normalizeDate(value);
+	if (!normalized) return "Selecionar data";
 
-  const [yyyy, mm, dd] = normalized.split("-");
-  return `${dd}/${mm}/${yyyy}`;
+	const [yyyy, mm, dd] = normalized.split("-");
+	return `${dd}/${mm}/${yyyy}`;
 }
 
 export function parseDateValue(value) {
-  const normalized = normalizeDate(value);
-  if (!normalized) return new Date();
-  const [yyyy, mm, dd] = normalized.split("-");
-  return new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+	const normalized = normalizeDate(value);
+	if (!normalized) return new Date();
+	const [yyyy, mm, dd] = normalized.split("-");
+	return new Date(Number(yyyy), Number(mm) - 1, Number(dd));
 }
 
 export function formatValueForInput(value) {
-  const parsed = Number(value || 0);
-  return parsed.toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+	const parsed = Number(value || 0);
+	return parsed.toLocaleString("pt-BR", {
+		minimumFractionDigits: 2,
+		maximumFractionDigits: 2,
+	});
 }

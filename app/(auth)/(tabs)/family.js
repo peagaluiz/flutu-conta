@@ -1,3 +1,3 @@
 export default function FamilyTab() {
-  return null;
+	return null;
 }

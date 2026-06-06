@@ -27,7 +27,7 @@ export type TransacaoDatabase = {
 	recurrence_sequence?: number | null;
 };
 
-export type RecurrenceFrequency = "mensal" | "semanal" | "anual" | "dias";
+export type RecurrenceFrequency = "mensal" | "semanal" | "anual";
 
 export type RecurrenceDatabase = {
 	id_recurrencia: number;
@@ -41,6 +41,8 @@ export type RecurrenceDatabase = {
 	template_json: string;
 	occurrences_count: number;
 	last_generated_at: string | null;
+	skip_non_working?: number | null;
+	skip_direction?: "before" | "after" | null;
 	created_at: string;
 	updated_at: string | null;
 	deleted: number;

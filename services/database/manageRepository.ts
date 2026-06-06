@@ -637,12 +637,14 @@ export function createManageRepository() {
 				`
           UPDATE pessoa
           SET nome = ?,
+              updated_at = ?,
               data_sync = ?,
               sync_status = 'pending',
               synced = 0
           WHERE id_pessoa = ?
         `,
 				cleanName,
+				nowISO(),
 				nowISO(),
 				id_pessoa
 			);
@@ -688,13 +690,15 @@ export function createManageRepository() {
 				`
           UPDATE pessoa
           SET nome = ?,
+              updated_at = ?,
               data_sync = ?,
               sync_status = 'pending',
               synced = 0
           WHERE id_pessoa = ?
         `,
 				cleanNextName,
-				nowISO(),
+				localNow,
+				localNow,
 				id_pessoa
 			);
 
@@ -795,11 +799,13 @@ export function createManageRepository() {
 				`
           UPDATE pessoa
           SET deleted = 1,
+              updated_at = ?,
               data_sync = ?,
               sync_status = 'pending',
               synced = 0
           WHERE id_pessoa = ?
         `,
+				localNow,
 				localNow,
 				id_pessoa
 			);
@@ -938,6 +944,7 @@ export function createManageRepository() {
           UPDATE imobilizado
           SET codigo = ?,
               descricao = ?,
+              updated_at = ?,
               data_sync = ?,
               sync_status = 'pending',
               synced = 0
@@ -945,6 +952,7 @@ export function createManageRepository() {
         `,
 				cleanName,
 				cleanName,
+				nowISO(),
 				nowISO(),
 				id_imobilizado
 			);
@@ -1003,11 +1011,13 @@ export function createManageRepository() {
 				`
           UPDATE imobilizado
           SET deleted = 1,
+              updated_at = ?,
               data_sync = ?,
               sync_status = 'pending',
               synced = 0
           WHERE id_imobilizado = ?
         `,
+				localNow,
 				localNow,
 				id_imobilizado
 			);

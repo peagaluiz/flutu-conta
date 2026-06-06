@@ -8,6 +8,10 @@ export function formatCurrency(value) {
 
 export function formatDate(dateString) {
 	if (!dateString) return "Sem vencimento";
+	if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+		const [y, m, d] = dateString.split("-");
+		return `${d}/${m}/${y}`;
+	}
 	const date = new Date(dateString);
 	if (Number.isNaN(date.getTime())) return "Sem vencimento";
 	return date.toLocaleDateString("pt-BR");

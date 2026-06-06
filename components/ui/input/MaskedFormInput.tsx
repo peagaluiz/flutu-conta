@@ -17,7 +17,7 @@ import { StyleProp, TextStyle, ViewStyle } from "react-native";
 
 interface MaskedFormInputProps {
     type?: string;
-    label: string;
+    label?: string;
     value?: string;
     onChange: (value: string) => void;
     onFocus?: (event: any) => void;
@@ -26,6 +26,9 @@ interface MaskedFormInputProps {
     error?: { message?: string };
     placeholder?: string;
     icon?: React.ElementType;
+    iconColor?: string;
+    focusIconColor?: string;
+    focusBorderColor?: string;
     keyboardType?: KeyboardTypeOptions;
     className?: string;
     variant?: "outline" | "underlined" | "rounded";
@@ -37,6 +40,7 @@ interface MaskedFormInputProps {
     isRequired?: boolean;
     style?: StyleProp<TextStyle>;
     inputContainerStyle?: StyleProp<ViewStyle>;
+    autoFocus?: boolean;
 }
 
 export const MaskedFormInput: React.FC<MaskedFormInputProps> = ({
@@ -49,6 +53,9 @@ export const MaskedFormInput: React.FC<MaskedFormInputProps> = ({
     mask,
     error,
     icon,
+    iconColor,
+    focusIconColor,
+    focusBorderColor,
     placeholder,
     keyboardType = "default",
     className = "",
@@ -61,11 +68,34 @@ export const MaskedFormInput: React.FC<MaskedFormInputProps> = ({
     isRequired = true,
     style,
     inputContainerStyle,
+    autoFocus = false,
 }) => {
     const [showPassword, setShowPassword] = React.useState(false);
+    const [isFocused, setIsFocused] = React.useState(false);
+
     const handleState = () => {
         setShowPassword((v) => !v);
     };
+
+    const handleFocus = (event: any) => {
+        setIsFocused(true);
+        onFocus?.(event);
+    };
+
+    const handleBlur = () => {
+        setIsFocused(false);
+        onBlur();
+    };
+
+    const focusedContainerStyle =
+        focusBorderColor && isFocused
+            ? { borderColor: focusBorderColor, borderWidth: 1.5 }
+            : undefined;
+
+    const resolvedIconColor =
+        iconColor
+            ? (isFocused && focusIconColor ? focusIconColor : iconColor)
+            : undefined;
 
     return (
         <FormControl size="md" isRequired={isRequired} isInvalid={!!error} className={`my-1 ${className + (type == "hidden" ? " hidden" : "")}`}>
@@ -76,33 +106,48 @@ export const MaskedFormInput: React.FC<MaskedFormInputProps> = ({
                     </FormControlLabelText>
                 </FormControlLabel>
             )}
-            <Input className={`my-1 ${classNameInputTag}`} variant={variant} style={inputContainerStyle}>
+            <Input
+                className={`my-1 ${classNameInputTag}`}
+                variant={variant}
+                style={[inputContainerStyle, focusedContainerStyle] as StyleProp<ViewStyle>}
+            >
                 {icon && (
-                    <InputSlot style={{ paddingLeft: 5 }}>
-                        <InputIcon as={icon} />
-                    </InputSlot>)}
+                    <InputSlot style={{ paddingLeft: 12 }}>
+                        {resolvedIconColor ? (
+                            React.createElement(icon as any, {
+                                size: 20,
+                                color: resolvedIconColor,
+                                strokeWidth: 1.9,
+                            })
+                        ) : (
+                            <InputIcon as={icon} />
+                        )}
+                    </InputSlot>
+                )}
                 {mask && !isPassword ?
                     <MaskInput
                         value={value}
                         mask={mask}
                         keyboardType={keyboardType}
                         placeholder={placeholder}
-                        onFocus={onFocus}
-                        onBlur={onBlur}
+                        onFocus={handleFocus}
+                        onBlur={handleBlur}
                         onChangeText={(masked, unmasked) => { onChange((useMaskedValue ? masked : unmasked)) }}
                         className={`flex-1 h-full py-0 px-2 bg-transparent border-0 outline-0 ${classNameInput}`}
                         style={[{ textAlign: classNameInput.includes("text-end") ? "right" : "left" }, style]}
+                        autoFocus={autoFocus}
                     />
                     : <InputField
                         type={isPassword ? (showPassword ? 'text' : 'password') : 'text'}
                         value={value}
                         keyboardType={keyboardType}
                         placeholder={placeholder}
-                        onFocus={onFocus}
-                        onBlur={onBlur}
+                        onFocus={handleFocus}
+                        onBlur={handleBlur}
                         onChangeText={onChange}
                         className={`flex-1 h-full py-0 px-2 bg-transparent border-0 outline-0 ${classNameInput}`}
                         style={[{ textAlign: classNameInput.includes("text-end") ? "right" : "left" }, style]}
+                        autoFocus={autoFocus}
                     />}
                 {isPassword && (
                     <Pressable
@@ -110,6 +155,7 @@ export const MaskedFormInput: React.FC<MaskedFormInputProps> = ({
                         onPress={handleState}
                         focusable={false}
                         accessible={false}
+                        style={{ paddingRight: 12 }}
                     >
                         <InputIcon as={showPassword ? EyeIcon : EyeOffIcon} />
                     </Pressable>

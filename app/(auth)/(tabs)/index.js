@@ -1,5 +1,5 @@
-import HomeFinanceList from "@/components/home_finance_list";
+import HomeFinanceList from "@/components/finance/home/HomeFinanceList";
 
 export default function Home() {
-    return <HomeFinanceList />;
+	return <HomeFinanceList />;
 }

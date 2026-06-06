@@ -13,8 +13,9 @@ type RecurrenceVisibilityParams = {
 
 export type RecurrenceCreateConfig = {
 	frequency: RecurrenceFrequency;
-	intervalDays?: number | null;
 	endDate?: string | null;
+	skipNonWorking?: boolean;
+	skipDirection?: "before" | "after" | null;
 };
 
 type SeedTransacaoPayload = Omit<TransacaoDatabase, "id_transacao" | "created_at" | "updated_at">;
@@ -57,28 +58,60 @@ function addYearsClamped(base: Date, yearsToAdd: number) {
 	return addMonthsClamped(base, yearsToAdd * 12);
 }
 
-function getNextDueDate(currentDueDate: string, frequency: RecurrenceFrequency, intervalDays: number | null) {
+function getNextDueDate(currentDueDate: string, frequency: RecurrenceFrequency) {
 	const base = parseISODate(currentDueDate) ?? new Date();
-	if (frequency === "semanal") {
-		return toISODate(addDays(base, 7));
-	}
-	if (frequency === "anual") {
-		return toISODate(addYearsClamped(base, 1));
-	}
-	if (frequency === "dias") {
-		const safeInterval = Math.max(1, Number(intervalDays || 1));
-		return toISODate(addDays(base, safeInterval));
-	}
+	if (frequency === "semanal") return toISODate(addDays(base, 7));
+	if (frequency === "anual") return toISODate(addYearsClamped(base, 1));
 	return toISODate(addMonthsClamped(base, 1));
 }
 
-function maxISODate(a: string, b: string) {
-	return a > b ? a : b;
+// Feriados nacionais fixos: [mês, dia]
+const BR_FIXED_HOLIDAYS: Array<[number, number]> = [
+	[1, 1], [4, 21], [5, 1], [9, 7], [10, 12], [11, 2], [11, 15], [12, 25],
+];
+
+function getEasterDate(year: number): Date {
+	const a = year % 19;
+	const b = Math.floor(year / 100);
+	const c = year % 100;
+	const d = Math.floor(b / 4);
+	const e = b % 4;
+	const f = Math.floor((b + 8) / 25);
+	const g = Math.floor((b - f + 1) / 3);
+	const h = (19 * a + b - d - g + 15) % 30;
+	const i = Math.floor(c / 4);
+	const k = c % 4;
+	const l = (32 + 2 * e + 2 * i - h - k) % 7;
+	const m = Math.floor((a + 11 * h + 22 * l) / 451);
+	const month = Math.floor((h + l - 7 * m + 114) / 31);
+	const day = ((h + l - 7 * m + 114) % 31) + 1;
+	return new Date(year, month - 1, day);
 }
 
-function minISODate(a: string, b: string) {
-	return a < b ? a : b;
+function isNonWorkingDay(isoDate: string): boolean {
+	const d = parseISODate(isoDate);
+	if (!d) return false;
+	if (d.getDay() === 0) return true; // domingo
+	const month = d.getMonth() + 1;
+	const day = d.getDate();
+	if (BR_FIXED_HOLIDAYS.some(([m, dd]) => m === month && dd === day)) return true;
+	// Sexta-feira Santa (Páscoa - 2 dias)
+	const goodFriday = addDays(getEasterDate(d.getFullYear()), -2);
+	if (toISODate(goodFriday) === isoDate) return true;
+	return false;
 }
+
+function adjustForNonWorking(isoDate: string, direction: "before" | "after"): string {
+	let current = isoDate;
+	const step = direction === "before" ? -1 : 1;
+	let safety = 0;
+	while (isNonWorkingDay(current) && safety < 14) {
+		current = toISODate(addDays(parseISODate(current)!, step));
+		safety++;
+	}
+	return current;
+}
+
 
 async function resolveVisibilityContext(params?: RecurrenceVisibilityParams) {
 	if (params?.userId) {
@@ -213,7 +246,7 @@ async function insertGeneratedTransacaoLocal(payload: SeedTransacaoPayload, dueD
 		template.observacao,
 		template.json,
 		nowISO(),
-		null,
+		nowISO(),
 		null,
 		"pending",
 		0,
@@ -254,13 +287,14 @@ export async function createRecurrenceFromNewTransaction(params: {
 	const todayISO = toISODate(new Date());
 	const dueDate = params.data.data_vencimento ?? todayISO;
 	const frequency = params.recurrence.frequency;
-	const intervalDays = frequency === "dias" ? Math.max(1, Number(params.recurrence.intervalDays || 1)) : null;
+	const skipNonWorking = params.recurrence.skipNonWorking ? 1 : 0;
+	const skipDirection = params.recurrence.skipDirection ?? null;
 	const uuid = generateRecurrenceUuid();
 	const templateJson = JSON.stringify(buildTemplatePayload({
 		...params.data,
 		user_id: params.data.user_id ?? visibility.userId ?? null,
 	}));
-	const nextDueDate = getNextDueDate(dueDate, frequency, intervalDays);
+	const nextDueDate = getNextDueDate(dueDate, frequency);
 
 	await db.runAsync(
 		`
@@ -275,28 +309,31 @@ export async function createRecurrenceFromNewTransaction(params: {
         template_json,
         occurrences_count,
         last_generated_at,
+        skip_non_working,
+        skip_direction,
         user_id,
         family_id,
         is_family_shared,
         created_at,
         updated_at,
         deleted
-      ) VALUES (?, 'ativa', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+      ) VALUES (?, 'ativa', ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
     `,
 		uuid,
 		frequency,
-		intervalDays,
 		dueDate,
 		nextDueDate,
 		params.recurrence.endDate ?? null,
 		templateJson,
 		1,
 		nowISO(),
+		skipNonWorking,
+		skipDirection,
 		params.data.user_id ?? visibility.userId ?? null,
 		params.data.family_id ?? visibility.familyId ?? null,
 		Number(params.data.is_family_shared ?? 0),
 		nowISO(),
-		null
+		nowISO()
 	);
 
 	const recurrenceRow = await loadRecurrenceByUuid(uuid);
@@ -324,16 +361,11 @@ export async function createRecurrenceFromNewTransaction(params: {
 	return { uuid, recurrenceId: recurrenceRow.id_recurrencia };
 }
 
-function getValidationHorizon(referenceDateISO: string, frequency: RecurrenceFrequency) {
-	const todayISO = toISODate(new Date());
-	const baseTarget = maxISODate(referenceDateISO, todayISO);
-
-	if (frequency === "mensal" || frequency === "dias") {
-		const plus30 = toISODate(addDays(parseISODate(todayISO) ?? new Date(), 30));
-		return minISODate(baseTarget, plus30);
-	}
-
-	return baseTarget;
+function getValidationHorizon(todayISO: string, frequency: RecurrenceFrequency) {
+	const today = parseISODate(todayISO) ?? new Date();
+	if (frequency === "semanal") return toISODate(addDays(today, 7));
+	if (frequency === "anual") return toISODate(addYearsClamped(today, 1));
+	return toISODate(addMonthsClamped(today, 1));
 }
 
 export async function validateAndGeneratePendingRecurrences(options?: {
@@ -348,10 +380,6 @@ export async function validateAndGeneratePendingRecurrences(options?: {
 
 	const visibility = await resolveVisibilityContext(options);
 	const sqlVisibility = buildSqlVisibilityClause("r", visibility);
-	const referenceISO =
-		(options?.referenceDate && /^\d{4}-\d{2}-\d{2}$/.test(String(options.referenceDate))
-			? String(options.referenceDate)
-			: toISODate(new Date()));
 	const todayISO = toISODate(new Date());
 
 	const recurrenceRows = await db.getAllAsync<RecurrenceDatabase>(
@@ -373,13 +401,15 @@ export async function validateAndGeneratePendingRecurrences(options?: {
 		validated += 1;
 
 		const endDate = recurrence.end_date ?? null;
-		const horizon = getValidationHorizon(referenceISO, recurrence.frequency as RecurrenceFrequency);
-		let cursor = maxISODate(recurrence.next_due_date || recurrence.base_due_date, todayISO);
+		const horizon = getValidationHorizon(todayISO, recurrence.frequency as RecurrenceFrequency);
+		let cursor = recurrence.next_due_date || recurrence.base_due_date;
 		let occurrenceSequence = Number(recurrence.occurrences_count || 0);
+		const shouldSkip = Number(recurrence.skip_non_working ?? 0) === 1;
+		const skipDir = (recurrence.skip_direction ?? "after") as "before" | "after";
 
 		while (cursor <= horizon) {
 			if (endDate && cursor > endDate) {
-				cursor = getNextDueDate(cursor, recurrence.frequency as RecurrenceFrequency, recurrence.interval_days);
+				cursor = getNextDueDate(cursor, recurrence.frequency as RecurrenceFrequency);
 				break;
 			}
 
@@ -403,6 +433,9 @@ export async function validateAndGeneratePendingRecurrences(options?: {
 					template = {};
 				}
 
+				// due_date nominal é o cursor; data_vencimento real pode ser ajustada
+				const actualDueDate = shouldSkip ? adjustForNonWorking(cursor, skipDir) : cursor;
+
 				const insertedId = await insertGeneratedTransacaoLocal(
 					{
 						remote_id: null,
@@ -415,13 +448,13 @@ export async function validateAndGeneratePendingRecurrences(options?: {
 						family_id: template.family_id ?? recurrence.family_id ?? null,
 						is_family_shared: Number(template.is_family_shared ?? recurrence.is_family_shared ?? 0),
 						user_id: template.user_id ?? recurrence.user_id ?? null,
-						data_transacao: atNoonISO(cursor),
-						data_vencimento: cursor,
+						data_transacao: atNoonISO(actualDueDate),
+						data_vencimento: actualDueDate,
 						status: template.status ?? "pendente",
 						observacao: template.observacao ?? null,
 						json: template.json ?? null,
 					},
-					cursor
+					actualDueDate
 				);
 
 				occurrenceSequence += 1;
@@ -445,7 +478,7 @@ export async function validateAndGeneratePendingRecurrences(options?: {
 				generated += 1;
 			}
 
-			cursor = getNextDueDate(cursor, recurrence.frequency as RecurrenceFrequency, recurrence.interval_days);
+			cursor = getNextDueDate(cursor, recurrence.frequency as RecurrenceFrequency);
 		}
 
 		await db.runAsync(

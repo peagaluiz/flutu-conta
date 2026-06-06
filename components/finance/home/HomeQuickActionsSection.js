@@ -22,7 +22,12 @@ export function HomeQuickActionsSection({ actions }) {
 			<Box className="flex-row items-center justify-between">
 				<HStack space="sm" className="items-center">
 					<ExternalLink size={20} color={colors.textPrimary} />
-					<Text className="font-semibold" style={{ color: colors.textPrimary }}>Atalhos rápidos</Text>
+					<Text
+						className="font-semibold"
+						style={{ color: colors.textPrimary }}
+					>
+						Atalhos rápidos
+					</Text>
 				</HStack>
 			</Box>
 
@@ -30,19 +35,39 @@ export function HomeQuickActionsSection({ actions }) {
 				{actions.map((action, index) => {
 					const ActionIcon = action.icon;
 					const flexWeight = index === 1 ? 34 : 33;
-					const bgColor = index === 1 ? "#192230" : (index === 2 ? "#0c665e" : "#2d3849");
+					const bgColor =
+						index === 1
+							? "#192230"
+							: index === 2
+							? "#0c665e"
+							: "#2d3849";
 
 					return (
-						<Pressable key={action.key} onPress={action.onPress} style={{ flex: flexWeight }}>
-							<Box className={`h-[122px] rounded-2xl border p-3 ${action.className}`} style={{ backgroundColor: bgColor, borderColor: colors.border }}>
+						<Pressable
+							key={action.key}
+							onPress={action.onPress}
+							style={{ flex: flexWeight }}
+						>
+							<Box
+								className={`h-[122px] rounded-2xl border p-3 ${action.className}`}
+								style={{
+									backgroundColor: bgColor,
+									borderColor: colors.border,
+								}}
+							>
 								<HStack className="items-start justify-between">
 									<Box className="rounded-lg bg-white/10 p-2">
 										<ActionIcon size={16} color="#FFFFFF" />
 									</Box>
 								</HStack>
 								<Box className="mt-4">
-									<Text className="text-sm font-semibold text-white">{action.title}</Text>
-									<Text numberOfLines={2} className="mt-1 text-[11px] text-white/75">
+									<Text className="text-sm font-semibold text-white">
+										{action.title}
+									</Text>
+									<Text
+										numberOfLines={2}
+										className="mt-1 text-[11px] text-white/75"
+									>
 										{action.subtitle}
 									</Text>
 								</Box>

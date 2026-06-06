@@ -1,0 +1,187 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Alert } from "react-native";
+import { loadSectionData } from "@/utils/auth/launches/loaders";
+import { getDeleteAction, getItemKey, filterValidItems } from "@/utils/auth/launches/actions";
+import { getItemType } from "@/utils/auth/launches/sections";
+
+const PAGE_SIZE = 30;
+
+export function useLaunchesData({ database, section, family, userData }) {
+	const [items, setItems] = useState([]);
+	const [loading, setLoading] = useState(true);
+	const [refreshing, setRefreshing] = useState(false);
+	const [page, setPage] = useState(1);
+	const [hasMore, setHasMore] = useState(true);
+	const [loadingMore, setLoadingMore] = useState(false);
+
+	const loadRef = useRef(0);
+
+	const visibilityArgs = useMemo(
+		() => ({
+			userId: userData?.id ?? null,
+			familyId: family?.id ? Number(family.id) : null,
+			visibilityScope: family?.id ? "all" : "mine",
+		}),
+		[family?.id, userData?.id]
+	);
+
+	const loadData = useCallback(
+		async (
+			target,
+			{ silent = false, append = false, page: pageToLoad = 1 } = {}
+		) => {
+			const id = ++loadRef.current;
+			const sectionTarget = target ?? section;
+
+			try {
+				if (sectionTarget === "transacoes") {
+					if (append) {
+						setLoadingMore(true);
+					} else if (!silent) {
+						setLoading(true);
+						setItems([]);
+						setHasMore(true);
+					}
+
+					const rows = await loadSectionData(database, sectionTarget, {
+						page: pageToLoad,
+						limit: PAGE_SIZE,
+						...visibilityArgs,
+					});
+
+					if (id === loadRef.current) {
+						const nextRows = Array.isArray(rows) ? rows : [];
+						setItems((current) =>
+							append ? [...current, ...nextRows] : nextRows
+						);
+						setPage(pageToLoad);
+						setHasMore(nextRows.length === PAGE_SIZE);
+					}
+				} else {
+					if (!silent) {
+						setLoading(true);
+						setItems([]);
+					}
+
+					const rows = await loadSectionData(
+						database,
+						sectionTarget,
+						visibilityArgs
+					);
+
+					if (id === loadRef.current) {
+						setItems(Array.isArray(rows) ? rows : []);
+					}
+				}
+			} catch {
+				if (id === loadRef.current) setItems([]);
+			} finally {
+				if (!silent && !append && id === loadRef.current) setLoading(false);
+				if (append && id === loadRef.current) setLoadingMore(false);
+			}
+		},
+		[database, section, visibilityArgs]
+	);
+
+	useEffect(() => {
+		setPage(1);
+		setHasMore(true);
+		setLoadingMore(false);
+		loadData(section);
+	}, [section, loadData]);
+
+	const onRefresh = useCallback(async () => {
+		setRefreshing(true);
+		try {
+			await database.syncAllPendingData({ force: true });
+			setPage(1);
+			setHasMore(true);
+			await loadData(section, { silent: true, page: 1 });
+		} catch {
+			// mantém a tela responsiva
+		} finally {
+			setRefreshing(false);
+		}
+	}, [database, loadData, section]);
+
+	const handleLoadMore = useCallback(() => {
+		if (section !== "transacoes") return;
+		if (loading || loadingMore || !hasMore) return;
+		loadData(section, { silent: true, append: true, page: page + 1 });
+	}, [hasMore, loadData, loading, loadingMore, page, section]);
+
+	const deleteItem = useCallback(
+		(item) => {
+			const itemType = getItemType(item);
+			const deleteAction = itemType
+				? getDeleteAction(database, itemType)
+				: null;
+			if (!deleteAction) return;
+
+			Alert.alert("Excluir", "Deseja excluir?", [
+				{ text: "Cancelar", style: "cancel" },
+				{
+					text: "Excluir",
+					style: "destructive",
+					onPress: async () => {
+						try {
+							await deleteAction(item);
+							setPage(1);
+							setHasMore(true);
+							await loadData(section, { silent: true, page: 1 });
+						} catch {
+							Alert.alert("Erro", "Falha ao excluir.");
+						}
+					},
+				},
+			]);
+		},
+		[database, loadData, section]
+	);
+
+	const syncPessoa = useCallback(
+		async (item) => {
+			try {
+				await database.syncPessoaPendente(item.nome, item.pending_ids);
+				await loadData("pessoas", { silent: true });
+			} catch {
+				Alert.alert("Erro", "Falha ao sincronizar.");
+			}
+		},
+		[database, loadData]
+	);
+
+	const toggleRecorrenciaStatus = useCallback(
+		async (item) => {
+			try {
+				if (item?.status === "ativa") {
+					await database.pauseRecorrencia(item.uuid);
+				} else {
+					await database.activateRecorrencia(item.uuid);
+				}
+				await loadData("recorrencias", { silent: true, page: 1 });
+			} catch {
+				Alert.alert("Erro", "Falha ao atualizar status da recorrência.");
+			}
+		},
+		[database, loadData]
+	);
+
+	const validItems = useMemo(
+		() => filterValidItems(items, section),
+		[items, section]
+	);
+
+	return {
+		validItems,
+		loading,
+		refreshing,
+		loadingMore,
+		loadData,
+		onRefresh,
+		handleLoadMore,
+		deleteItem,
+		syncPessoa,
+		toggleRecorrenciaStatus,
+	};
+}

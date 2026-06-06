@@ -62,18 +62,15 @@ function mergeSummary(target: SyncSummary, source: SyncSummary) {
 }
 
 async function getAuthUserId() {
-	if (cachedAuthUserId !== undefined) return cachedAuthUserId;
+	// Only cache a confirmed user ID — never cache null, so auth state changes are picked up
+	if (cachedAuthUserId) return cachedAuthUserId;
 
 	try {
 		const { data, error } = await supabase.auth.getUser();
-		if (error) {
-			cachedAuthUserId = null;
-			return null;
-		}
-		cachedAuthUserId = data?.user?.id ?? null;
+		if (error || !data?.user?.id) return null;
+		cachedAuthUserId = data.user.id;
 		return cachedAuthUserId;
 	} catch {
-		cachedAuthUserId = null;
 		return null;
 	}
 }
@@ -276,7 +273,7 @@ async function toTransacaoPayload(row: any) {
 		status: row.status ?? "pendente",
 		observacao: row.observacao ?? null,
 		created_at: row.created_at ?? nowISO(),
-		updated_at: row.updated_at ?? null,
+		updated_at: row.updated_at ?? nowISO(),
 		json: row.json ?? null,
 	};
 }
@@ -345,14 +342,14 @@ async function upsertRemotePessoaLocally(remote: any) {
       INSERT INTO pessoa (
         remote_id,
         nome,
-		family_id,
-		is_family_shared,
-		user_id,
+        family_id,
+        is_family_shared,
+        user_id,
         data_sync,
         sync_status,
         synced,
         deleted
-      ) VALUES (?, ?, ?, 'synced', 1, 0)
+      ) VALUES (?, ?, ?, ?, ?, ?, 'synced', 1, 0)
     `,
 		remote.id_pessoa,
 		remote.nome ?? "",

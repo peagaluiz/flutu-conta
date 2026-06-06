@@ -20,6 +20,9 @@ const RadioButton: React.FC<RadioButtonProps> = ({
     ...restProps
 }) => {
     const buttonVariant = isSelected ? "solid" : "outline";
+    // ButtonGroup (isAttached) injeta `index` nos filhos para estilizar bordas;
+    // descartar antes de espalhar evita o warning "Invalid prop on Fragment".
+    const { index: _index, ...cleanProps } = restProps as any;
 
     return (
         <Button
@@ -27,7 +30,7 @@ const RadioButton: React.FC<RadioButtonProps> = ({
             variant={buttonVariant}
             action={action}
             onPress={onPress}
-            {...restProps}
+            {...cleanProps}
         >
             {IconComponent && (
                 // @ts-ignore // Mesma razão: ButtonIcon pode estar undefined

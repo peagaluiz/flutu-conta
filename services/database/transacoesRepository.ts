@@ -166,7 +166,7 @@ async function insertTransacaoLocal(
 		data.observacao ?? null,
 		data.json ?? null,
 		nowISO(),
-		null,
+		nowISO(),
 		null,
 		"pending",
 		0,
