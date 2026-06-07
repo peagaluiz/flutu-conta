@@ -1,13 +1,21 @@
 import React, { memo } from "react";
 import { Box } from "@/components/ui/box";
 
-function CardBase({ children, colors, danger = false }) {
+function CardBase({ children, colors, danger = false, selected = false }) {
 	return (
 		<Box
 			className="rounded-2xl border p-4"
 			style={{
-				backgroundColor: danger ? colors.dangerBg : colors.surface,
-				borderColor: danger ? colors.dangerText : colors.border,
+				backgroundColor: selected
+					? colors.brandSoft
+					: danger
+					? colors.dangerBg
+					: colors.surface,
+				borderColor: selected
+					? colors.brand
+					: danger
+					? colors.dangerText
+					: colors.border,
 			}}
 		>
 			{children}

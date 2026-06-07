@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "expo-router";
 import { useDatabase } from "@/hooks/useDatabase";
 import { useAuth } from "@/state/AuthContext";
@@ -19,7 +19,8 @@ export function useHomeFinance() {
 	const router = useRouter();
 	const database = useDatabase();
 	const { userData, family } = useAuth();
-	const { startSync, endSync, updateStep } = useSyncProgress();
+	const { startSync, endSync, updateStep, isSyncing } = useSyncProgress();
+	const wasSyncingRef = useRef(false);
 
 	const { dateRange, setDateRange, dateField, setDateField } = useFinanceDate();
 	const { visibilityScope, setVisibilityScope } = useFinanceVisibilityScope();
@@ -77,6 +78,16 @@ export function useHomeFinance() {
 			setVisibilityScope("mine");
 		}
 	}, [hasFamily, visibilityScope]);
+
+	// Recarrega quando o sync inicial (disparado pelo login) termina
+	useEffect(() => {
+		if (isSyncing) {
+			wasSyncingRef.current = true;
+		} else if (wasSyncingRef.current) {
+			wasSyncingRef.current = false;
+			reload();
+		}
+	}, [isSyncing, reload]);
 
 	const onRefresh = useCallback(async () => {
 		setRefreshing(true);

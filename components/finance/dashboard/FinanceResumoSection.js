@@ -46,7 +46,7 @@ export function FinanceResumoSection({
                     Valores
                 </Text>
                 <Text className="text-sm" style={{ color: colors.textSecondary }}>
-                    Veja aqui um resumo mais detalhado dos valores
+                    Veja aqui um resumo mais detalhado dos valores com base nos filtros aplicados na tela inicial.
                 </Text>
             </Box>
 
@@ -58,7 +58,7 @@ export function FinanceResumoSection({
                                 Consolidado
                             </Text>
                             <Text
-                                className="text-lg font-bold mt-1"
+                                className="text-lg font-bold"
                                 style={{ color: colors.textPrimary }}
                             >
                                 {resumo.saldoLabel}
@@ -71,7 +71,7 @@ export function FinanceResumoSection({
                             Real
                         </Text>
                         <Text
-                            className="text-lg font-bold mt-1"
+                            className="text-lg font-bold"
                             style={{ color: colors.textPrimary }}
                         >
                             {resumo.saldoRealLabel}

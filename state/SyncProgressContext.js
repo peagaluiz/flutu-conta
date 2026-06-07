@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useRef } from "react";
+import React, { createContext, useCallback, useContext, useRef, useState } from "react";
 import {
 	showSyncNotification,
 	dismissSyncNotification,
@@ -8,19 +8,23 @@ const SyncProgressContext = createContext({
 	startSync: () => {},
 	endSync: () => {},
 	updateStep: () => {},
+	isSyncing: false,
 });
 
 export function SyncProgressProvider({ children }) {
 	const countRef = useRef(0);
+	const [isSyncing, setIsSyncing] = useState(false);
 
 	const startSync = useCallback(async (step = "Sincronizando dados...") => {
 		countRef.current += 1;
+		setIsSyncing(true);
 		await showSyncNotification(step);
 	}, []);
 
 	const endSync = useCallback(async () => {
 		countRef.current = Math.max(0, countRef.current - 1);
 		if (countRef.current === 0) {
+			setIsSyncing(false);
 			await dismissSyncNotification();
 		}
 	}, []);
@@ -32,7 +36,7 @@ export function SyncProgressProvider({ children }) {
 	}, []);
 
 	return (
-		<SyncProgressContext.Provider value={{ startSync, endSync, updateStep }}>
+		<SyncProgressContext.Provider value={{ startSync, endSync, updateStep, isSyncing }}>
 			{children}
 		</SyncProgressContext.Provider>
 	);

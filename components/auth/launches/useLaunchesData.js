@@ -189,6 +189,48 @@ export function useLaunchesData({ database, section, family, userData }) {
 		[database, loadData, section]
 	);
 
+	const darBaixaBulk = useCallback(
+		async (ids, dataBaixa) => {
+			try {
+				await Promise.all([...ids].map((id) => database.darBaixa(id, dataBaixa)));
+				setPage(1);
+				setHasMore(true);
+				await loadData(section, { silent: true, page: 1 });
+			} catch {
+				Alert.alert("Erro", "Falha ao dar baixa.");
+			}
+		},
+		[database, loadData, section]
+	);
+
+	const removerBaixaBulk = useCallback(
+		async (ids) => {
+			try {
+				await Promise.all([...ids].map((id) => database.removerBaixa(id)));
+				setPage(1);
+				setHasMore(true);
+				await loadData(section, { silent: true, page: 1 });
+			} catch {
+				Alert.alert("Erro", "Falha ao remover baixa.");
+			}
+		},
+		[database, loadData, section]
+	);
+
+	const deleteItemsBulk = useCallback(
+		async (ids) => {
+			try {
+				await Promise.all([...ids].map((id) => database.deleteTransacao(id)));
+				setPage(1);
+				setHasMore(true);
+				await loadData(section, { silent: true, page: 1 });
+			} catch {
+				Alert.alert("Erro", "Falha ao excluir itens.");
+			}
+		},
+		[database, loadData, section]
+	);
+
 	const validItems = useMemo(
 		() => filterValidItems(items, section),
 		[items, section]
@@ -206,5 +248,8 @@ export function useLaunchesData({ database, section, family, userData }) {
 		syncPessoa,
 		toggleRecorrenciaStatus,
 		darBaixa,
+		darBaixaBulk,
+		removerBaixaBulk,
+		deleteItemsBulk,
 	};
 }

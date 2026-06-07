@@ -36,9 +36,7 @@ export function TransacaoMainSection({
     parseDateValue,
     toISODate,
     formatDateDisplay,
-    shareWithFamily,
     canShareWithFamily,
-    onShareWithFamilyChange,
 }) {
     const inputBorderColor = themeColors?.borderStrong;
     const inputBackgroundColor = themeColors?.surface;
@@ -305,11 +303,17 @@ export function TransacaoMainSection({
                                     Quando ativo, este lançamento fica visível para os membros da família.
                                 </Text>
                             </Box>
-                            <Switch
-                                value={Boolean(shareWithFamily)}
-                                onValueChange={(nextValue) => onShareWithFamilyChange?.(nextValue)}
-                                trackColor={{ false: themeColors.borderStrong, true: themeColors.success }}
-                                thumbColor={themeColors.surface}
+                            <Controller
+                                control={control}
+                                name="share_with_family"
+                                render={({ field: { value, onChange } }) => (
+                                    <Switch
+                                        value={Boolean(value)}
+                                        onValueChange={onChange}
+                                        trackColor={{ false: themeColors.borderStrong, true: themeColors.success }}
+                                        thumbColor={themeColors.surface}
+                                    />
+                                )}
                             />
                         </Box>
                     </Box>

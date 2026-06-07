@@ -58,7 +58,6 @@ export default function Insert() {
 
 	const dataVencimento = watch("data_vencimento");
 	const recurrenceMode = watch("recurrence_mode");
-	const shareWithFamily = watch("share_with_family");
 	const recurrenceFrequency = watch("recurrence_frequency");
 	const idBanco = watch("id_banco");
 
@@ -126,14 +125,7 @@ export default function Insert() {
 							parseDateValue={parseDateValue}
 							toISODate={toISODate}
 							formatDateDisplay={formatDateDisplay}
-							shareWithFamily={shareWithFamily}
 							canShareWithFamily={Boolean(family?.id)}
-							onShareWithFamilyChange={(v) =>
-								setValue("share_with_family", v, {
-									shouldDirty: true,
-									shouldTouch: true,
-								})
-							}
 						/>
 						<RecurrenceSection
 							isDarkMode={isDarkMode}

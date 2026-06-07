@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FlatList, RefreshControl } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/state/AuthContext";
@@ -26,6 +26,8 @@ import LaunchesListEmpty from "@/components/auth/launches/LaunchesListEmpty";
 import LaunchesFooterLoader from "@/components/auth/launches/LaunchesFooterLoader";
 import LaunchesEditorModal from "@/components/auth/launches/LaunchesEditorModal";
 import BancoCatalogoSheet from "@/components/auth/launches/BancoCatalogoSheet";
+import { LaunchesBulkActions } from "@/components/auth/launches/LaunchesBulkActions";
+import { BaixaDateModal } from "@/components/auth/launches/BaixaDateModal";
 
 const ItemSeparator = () => <Box style={{ height: 10 }} />;
 
@@ -40,6 +42,14 @@ export default function Launches() {
 	const [section, setSection] = useState("transacoes");
 	const config = useMemo(() => getSectionConfig(section), [section]);
 
+	const [selectedIds, setSelectedIds] = useState(new Set());
+	const [baixaDateModalOpen, setBaixaDateModalOpen] = useState(false);
+	const selectionMode = selectedIds.size > 0;
+
+	useEffect(() => {
+		setSelectedIds(new Set());
+	}, [section]);
+
 	const {
 		validItems,
 		loading,
@@ -52,6 +62,9 @@ export default function Launches() {
 		syncPessoa,
 		toggleRecorrenciaStatus,
 		darBaixa,
+		darBaixaBulk,
+		removerBaixaBulk,
+		deleteItemsBulk,
 	} = useLaunchesData({ database, section, family, userData });
 
 	const {
@@ -76,6 +89,51 @@ export default function Launches() {
 		closeCatalogSheet,
 		createBancoFromCatalog,
 	} = useLaunchesEditor({ database, section, family, userData, loadData });
+
+	const selectedItems = useMemo(
+		() => validItems.filter((item) => selectedIds.has(item.id_transacao)),
+		[validItems, selectedIds]
+	);
+
+	const handleLongPress = useCallback(
+		(item) => {
+			if (section !== "transacoes") return;
+			setSelectedIds(new Set([item.id_transacao]));
+		},
+		[section]
+	);
+
+	const handleToggleSelect = useCallback((item) => {
+		setSelectedIds((prev) => {
+			const next = new Set(prev);
+			if (next.has(item.id_transacao)) {
+				next.delete(item.id_transacao);
+			} else {
+				next.add(item.id_transacao);
+			}
+			return next;
+		});
+	}, []);
+
+	const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+
+	const handleBulkDelete = useCallback(async () => {
+		await deleteItemsBulk(selectedIds);
+		setSelectedIds(new Set());
+	}, [selectedIds, deleteItemsBulk]);
+
+	const handleBulkDarBaixa = useCallback(
+		async (date) => {
+			await darBaixaBulk(selectedIds, date);
+			setSelectedIds(new Set());
+		},
+		[selectedIds, darBaixaBulk]
+	);
+
+	const handleBulkRemoverBaixa = useCallback(async () => {
+		await removerBaixaBulk(selectedIds);
+		setSelectedIds(new Set());
+	}, [selectedIds, removerBaixaBulk]);
 
 	const handleCreate = useCallback(() => {
 		if (section === "transacoes") {
@@ -109,6 +167,10 @@ export default function Launches() {
 						onEdit={() => openEdit(item)}
 						onDelete={() => deleteItem(item)}
 						onDarBaixa={() => darBaixa(item)}
+						selected={selectedIds.has(item.id_transacao)}
+						selectionMode={selectionMode}
+						onLongPress={() => handleLongPress(item)}
+						onToggleSelect={() => handleToggleSelect(item)}
 					/>
 				);
 			}
@@ -163,7 +225,55 @@ export default function Launches() {
 			}
 			return null;
 		},
-		[colors, deleteItem, openEdit, syncPessoa, toggleRecorrenciaStatus, darBaixa, section]
+		[
+			colors,
+			deleteItem,
+			openEdit,
+			syncPessoa,
+			toggleRecorrenciaStatus,
+			darBaixa,
+			selectedIds,
+			selectionMode,
+			handleLongPress,
+			handleToggleSelect,
+		]
+	);
+
+	const listHeader = useMemo(
+		() => (
+			<>
+				<LaunchesHeader
+					section={section}
+					onSectionChange={setSection}
+					config={config}
+					colors={colors}
+					onCreate={handleCreate}
+				/>
+				{selectionMode && section === "transacoes" && (
+					<LaunchesBulkActions
+						selectedIds={selectedIds}
+						selectedItems={selectedItems}
+						colors={colors}
+						onDelete={handleBulkDelete}
+						onDarBaixa={() => setBaixaDateModalOpen(true)}
+						onRemoverBaixa={handleBulkRemoverBaixa}
+						onClear={clearSelection}
+					/>
+				)}
+			</>
+		),
+		[
+			section,
+			config,
+			colors,
+			handleCreate,
+			selectionMode,
+			selectedIds,
+			selectedItems,
+			handleBulkDelete,
+			handleBulkRemoverBaixa,
+			clearSelection,
+		]
 	);
 
 	return (
@@ -180,15 +290,7 @@ export default function Launches() {
 				keyExtractor={(item, index) => String(getItemKey(item, index))}
 				renderItem={({ item, index }) => renderCard(item, index)}
 				ItemSeparatorComponent={ItemSeparator}
-				ListHeaderComponent={
-					<LaunchesHeader
-						section={section}
-						onSectionChange={setSection}
-						config={config}
-						colors={colors}
-						onCreate={handleCreate}
-					/>
-				}
+				ListHeaderComponent={listHeader}
 				ListEmptyComponent={
 					<LaunchesListEmpty loading={loading} colors={colors} />
 				}
@@ -230,6 +332,12 @@ export default function Launches() {
 					await createBancoFromCatalog(item);
 				}}
 				colors={colors}
+			/>
+
+			<BaixaDateModal
+				isOpen={baixaDateModalOpen}
+				onClose={() => setBaixaDateModalOpen(false)}
+				onApply={handleBulkDarBaixa}
 			/>
 		</Box>
 	);

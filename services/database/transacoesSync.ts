@@ -204,6 +204,28 @@ async function resolvePessoaRemoteId(localId?: number | null) {
 	return row?.remote_id ?? localId;
 }
 
+async function resolveBancoRemoteId(localId?: number | null) {
+	if (!db || !localId) return localId ?? null;
+
+	const row = await db.getFirstAsync<any>(
+		`SELECT remote_id FROM banco WHERE id_banco = ? LIMIT 1`,
+		localId
+	);
+
+	return row?.remote_id ?? localId;
+}
+
+async function resolveBancoLocalId(remoteId?: number | null) {
+	if (!db || !remoteId) return remoteId ?? null;
+
+	const row = await db.getFirstAsync<any>(
+		`SELECT id_banco FROM banco WHERE remote_id = ? LIMIT 1`,
+		remoteId
+	);
+
+	return row?.id_banco ?? null;
+}
+
 async function resolvePessoaLocalId(remoteId?: number | null) {
 	if (!db || !remoteId) return remoteId ?? null;
 
@@ -269,6 +291,7 @@ async function toImobilizadoPayload(row: any) {
 async function toTransacaoPayload(row: any) {
 	const remotePessoa = await resolvePessoaRemoteId(row.id_pessoa ?? null);
 	const remoteImobilizado = await resolveImobilizadoRemoteId(row.id_imobilizado ?? null);
+	const remoteBanco = await resolveBancoRemoteId(row.id_banco ?? null);
 
 	return {
 		tipo: row.tipo,
@@ -277,6 +300,7 @@ async function toTransacaoPayload(row: any) {
 		id_pessoa: remotePessoa,
 		pessoa: row.pessoa ?? null,
 		id_imobilizado: remoteImobilizado,
+		id_banco: remoteBanco,
 		family_id: row.family_id ?? null,
 		is_family_shared: Number(row.is_family_shared ?? 0),
 		user_id: row.user_id ?? null,
@@ -1254,6 +1278,7 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
 	const remoteDeleted = Number(remote.deleted ?? 0) === 1;
 	const localPessoaId = await resolvePessoaLocalId(remote.id_pessoa ?? null);
 	const localImobilizadoId = await resolveImobilizadoLocalId(remote.id_imobilizado ?? null);
+	const localBancoId = await resolveBancoLocalId(remote.id_banco ?? null);
 
 	const existingByRemote = await db.getFirstAsync<any>(
 		`
@@ -1287,6 +1312,7 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
 			Number(existingByRemote?.id_pessoa || 0) === Number(localPessoaId || 0) &&
 			String(existingByRemote?.pessoa || "") === String(remote?.pessoa || "") &&
 			Number(existingByRemote?.id_imobilizado || 0) === Number(localImobilizadoId || 0) &&
+			Number(existingByRemote?.id_banco || 0) === Number(localBancoId || 0) &&
 			Number(existingByRemote?.family_id || 0) === Number(remote?.family_id || 0) &&
 			Number(existingByRemote?.is_family_shared || 0) === Number(remote?.is_family_shared || 0) &&
 			String(existingByRemote?.user_id || "") === String(remote?.user_id || "") &&
@@ -1312,6 +1338,7 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
             id_pessoa = ?,
             pessoa = ?,
             id_imobilizado = ?,
+            id_banco = ?,
 			family_id = ?,
 			is_family_shared = ?,
 			user_id = COALESCE(?, user_id),
@@ -1334,6 +1361,7 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
 			localPessoaId,
 			remote.pessoa ?? null,
 			localImobilizadoId,
+			localBancoId,
 			remote.family_id ?? null,
 			Number(remote.is_family_shared ?? 0),
 			remote.user_id ?? null,
@@ -1372,6 +1400,7 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
         id_pessoa,
         pessoa,
         id_imobilizado,
+        id_banco,
 		family_id,
 		is_family_shared,
 		user_id,
@@ -1387,7 +1416,7 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
         sync_status,
         synced,
         deleted
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
 		remote.id_transacao,
 		remote.tipo ?? null,
@@ -1396,6 +1425,7 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
 		localPessoaId,
 		remote.pessoa ?? null,
 		localImobilizadoId,
+		localBancoId,
 		remote.family_id ?? null,
 		Number(remote.is_family_shared ?? 0),
 		remote.user_id ?? null,

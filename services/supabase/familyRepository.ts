@@ -35,6 +35,14 @@ export type FamilySnapshot = {
     invites: FamilyInvite[];
 };
 
+export type PendingInvite = {
+    id: number;
+    family_id: number;
+    family_nome: string;
+    invited_by_nome: string | null;
+    created_at: string | null;
+};
+
 async function getCurrentUserId() {
     const { data, error } = await supabase.auth.getUser();
     if (error) throw new Error(error.message || "Falha ao obter usuário");
@@ -185,13 +193,21 @@ export async function inviteFamilyMember(familyId: number, email: string) {
 
     if (error) throw new Error(error.message || "Falha ao enviar convite");
 
-    supabase.functions.invoke("send-family-invite", {
-        body: {
-            email: cleanEmail,
-            family_name: String(familyId),
-            invited_by: userId,
-        },
-    }).catch(() => {});
+    supabase
+        .from("familias")
+        .select("nome")
+        .eq("id", familyId)
+        .maybeSingle()
+        .then(({ data: familia }) => {
+            supabase.functions.invoke("send-family-invite", {
+                body: {
+                    email: cleanEmail,
+                    family_name: familia?.nome ?? String(familyId),
+                    invited_by: userId,
+                },
+            });
+        })
+        .catch(() => {});
 }
 
 export async function cancelInvite(inviteId: number) {
@@ -285,6 +301,65 @@ export async function leaveFamily(snapshot: FamilySnapshot) {
         .eq("user_id", userId);
 
     if (error) throw new Error(error.message || "Falha ao sair da família");
+}
+
+export async function getPendingInviteForCurrentUser(): Promise<PendingInvite | null> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user?.email) return null;
+
+    const { data } = await supabase
+        .from("familia_convites")
+        .select("id, family_id, invited_by_user_id, created_at")
+        .eq("email", user.email)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (!data) return null;
+
+    const [{ data: familia }, { data: inviter }] = await Promise.all([
+        supabase.from("familias").select("nome").eq("id", data.family_id).maybeSingle(),
+        supabase.from("profiles").select("nome, email").eq("id", data.invited_by_user_id).maybeSingle(),
+    ]);
+
+    return {
+        id: data.id,
+        family_id: data.family_id,
+        family_nome: familia?.nome ?? "Família",
+        invited_by_nome: (inviter as any)?.nome ?? (inviter as any)?.email ?? null,
+        created_at: data.created_at ?? null,
+    };
+}
+
+export async function acceptFamilyInviteById(inviteId: number, familyId: number) {
+    const userId = await getCurrentUserId();
+
+    const { data: existing } = await supabase
+        .from("familia_membros")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("status", "active")
+        .maybeSingle();
+
+    if (existing?.id) throw new Error("Você já participa de uma família");
+
+    const { error: memberError } = await supabase
+        .from("familia_membros")
+        .insert({ family_id: familyId, user_id: userId, role: "member", status: "active" });
+
+    if (memberError) throw new Error(memberError.message || "Falha ao entrar na família");
+
+    await supabase.from("familia_convites").update({ status: "accepted" }).eq("id", inviteId);
+}
+
+export async function declineFamilyInviteById(inviteId: number) {
+    const { error } = await supabase
+        .from("familia_convites")
+        .update({ status: "cancelled" })
+        .eq("id", inviteId);
+
+    if (error) throw new Error(error.message || "Falha ao recusar convite");
 }
 
 export async function deleteFamily(familyId: number) {

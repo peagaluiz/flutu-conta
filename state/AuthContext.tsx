@@ -14,15 +14,19 @@ import {
 } from "@/services/auth/deviceCredentials";
 import { Session } from "@supabase/supabase-js";
 import {
+    acceptFamilyInviteById,
     cancelInvite,
     createFamily,
+    declineFamilyInviteById,
     deleteFamily,
     FamilyInvite,
     FamilyMember,
     FamilySnapshot,
     getFamilySnapshot,
+    getPendingInviteForCurrentUser,
     inviteFamilyMember,
     leaveFamily,
+    PendingInvite,
     removeFamilyMember,
     transferOwnership,
 } from "@/services/supabase/familyRepository";
@@ -70,6 +74,7 @@ type AuthState = {
     family: FamilyInfo | null;
     familyMembers: FamilyMember[];
     familyInvites: FamilyInvite[];
+    pendingInvite: PendingInvite | null;
     reloadFamily: () => Promise<void>;
     createNewFamily: (nome: string) => Promise<void>;
     sendFamilyInvite: (email: string) => Promise<void>;
@@ -78,6 +83,8 @@ type AuthState = {
     transferFamilyOwnership: (targetUserId: string) => Promise<void>;
     leaveCurrentFamily: () => Promise<void>;
     deleteCurrentFamily: () => Promise<void>;
+    acceptPendingInvite: () => Promise<void>;
+    declinePendingInvite: () => Promise<void>;
 };
 
 export const AuthContext = createContext<AuthState>({} as AuthState);
@@ -108,6 +115,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
     const [familyInvites, setFamilyInvites] = useState<FamilyInvite[]>([]);
     const [familySnapshot, setFamilySnapshot] = useState<FamilySnapshot | null>(null);
+    const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null);
     const router = useRouter();
 
     async function reloadFamily() {
@@ -116,6 +124,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setFamilyMembers([]);
             setFamilyInvites([]);
             setFamilySnapshot(null);
+            setPendingInvite(null);
             setUser((prev) =>
                 prev
                     ? {
@@ -146,8 +155,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                     }
                     : prev
             );
+            const invite = await getPendingInviteForCurrentUser().catch(() => null);
+            setPendingInvite(invite);
             return;
         }
+
+        setPendingInvite(null);
 
         const nextFamily: FamilyInfo = {
             id: snapshot.family.id,
@@ -219,6 +232,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setFamilyMembers([]);
         setFamilyInvites([]);
         setFamilySnapshot(null);
+        setPendingInvite(null);
         setIsLoggedIn(false);
         router.replace("/login");
     }
@@ -343,6 +357,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         await reloadFamily();
     }
 
+    async function acceptPendingInvite() {
+        if (!pendingInvite) throw new Error("Nenhum convite pendente");
+        await acceptFamilyInviteById(pendingInvite.id, pendingInvite.family_id);
+        await reloadFamily();
+    }
+
+    async function declinePendingInvite() {
+        if (!pendingInvite) throw new Error("Nenhum convite pendente");
+        await declineFamilyInviteById(pendingInvite.id);
+        setPendingInvite(null);
+    }
+
     useEffect(() => {
         async function init() {
             const { data, error } = await supabase.auth.getSession();
@@ -411,6 +437,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 family,
                 familyMembers,
                 familyInvites,
+                pendingInvite,
                 reloadFamily,
                 createNewFamily,
                 sendFamilyInvite,
@@ -419,6 +446,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 transferFamilyOwnership,
                 leaveCurrentFamily,
                 deleteCurrentFamily,
+                acceptPendingInvite,
+                declinePendingInvite,
             }}
         >
             {children}

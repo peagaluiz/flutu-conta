@@ -24,6 +24,14 @@ serve(async (req) => {
         });
 
         if (error) {
+            const msg = error.message?.toLowerCase() ?? "";
+            if (msg.includes("already registered") || msg.includes("already been registered")) {
+                return new Response(
+                    JSON.stringify({ ok: true, note: "user_already_exists" }),
+                    { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+                );
+            }
+
             return new Response(
                 JSON.stringify({ error: error.message }),
                 { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
