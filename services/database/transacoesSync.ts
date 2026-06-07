@@ -1210,12 +1210,13 @@ async function syncAllPendingInternal(onProgress?: (step: string) => void) {
 	const imobilizadoDown = await syncRemoteTableDown("imobilizado");
 	mergeSummary(full, imobilizadoDown);
 
-	const transacoesDown = await syncRemoteTableDown("transacoes");
-	mergeSummary(full, transacoesDown);
-
+	// Banco deve vir antes de transacoes para que resolveBancoLocalId funcione
 	onProgress?.("Atualizando bancos...");
 	const bancoDown = await syncRemoteBancoDown();
 	mergeSummary(full, bancoDown);
+
+	const transacoesDown = await syncRemoteTableDown("transacoes");
+	mergeSummary(full, transacoesDown);
 
 	onProgress?.("Enviando recorrências...");
 	await syncPendingRecorrencias(full);
