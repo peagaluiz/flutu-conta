@@ -174,12 +174,16 @@ export function useLaunchesData({ database, section, family, userData }) {
 	const darBaixa = useCallback(
 		async (item) => {
 			try {
-				await database.darBaixa(item.id_transacao);
+				if (item.status === "pendente") {
+					await database.darBaixa(item.id_transacao);
+				} else {
+					await database.removerBaixa(item.id_transacao);
+				}
 				setPage(1);
 				setHasMore(true);
 				await loadData(section, { silent: true, page: 1 });
 			} catch {
-				Alert.alert("Erro", "Falha ao dar baixa.");
+				Alert.alert("Erro", "Falha ao atualizar baixa.");
 			}
 		},
 		[database, loadData, section]

@@ -1,21 +1,21 @@
 import React, { memo } from "react";
 import { Button, ButtonIcon, ButtonText } from "@/components/ui/button";
 
-function ActionButton({ label, icon: Icon, onPress, colors, disabled }) {
+function ActionButton({ label, icon: Icon, onPress, colors, disabled, className }) {
 	return (
 		<Button
 			action="secondary"
 			variant="outline"
 			size="sm"
 			onPress={disabled ? undefined : onPress}
-			className="flex-1"
+			className={`flex-1 ${className || ""}`}
 			style={{
 				borderColor: colors.border,
 				opacity: disabled ? 0.4 : 1,
 			}}
 		>
 			<ButtonIcon as={Icon} />
-			<ButtonText>{label}</ButtonText>
+			{label && <ButtonText>{label}</ButtonText>}
 		</Button>
 	);
 }
