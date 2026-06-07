@@ -17,27 +17,7 @@ export const categorias = [
 	"Lazer",
 	"Salário",
 	"Investimentos",
-	"Outros",
-	"Outros2",
-	"Outros23",
-	"Outros234",
-	"Outros2345",
-	"Outros23456",
-	"Outros1",
-	"Outros3",
-	"Outros4",
-	"Outros5",
-	"Outros6",
-	"Outros7",
-	"Outros81",
-	"Outros91",
-	"Outr7os1",
-	"Outr5os1",
-	"Outros51",
-	"Outros441",
-	"Outros41",
-	"Outro1s1",
-	"Outros21",
+	"Outros"
 ];
 
 export const insertSchema = yup.object().shape({
@@ -71,6 +51,11 @@ export const insertSchema = yup.object().shape({
 		.string()
 		.required("Selecione o status")
 		.oneOf(["pendente", "pago"]),
+	data_baixa: yup.string().nullable().when("status", {
+		is: "pago",
+		then: (schemaRef) => schemaRef.required("Informe a data de baixa"),
+		otherwise: (schemaRef) => schemaRef.nullable().notRequired(),
+	}),
 	share_with_family: yup.boolean().default(false),
 	observacao: yup.string().nullable(),
 	id_banco: yup.number().nullable().optional(),

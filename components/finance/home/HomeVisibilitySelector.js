@@ -25,7 +25,7 @@ export function HomeVisibilitySelector({ value, onChange }) {
 					className="text-sm font-semibold"
 					style={{ color: colors.textPrimary }}
 				>
-					Visão da home
+					Família
 				</Text>
 				<HStack className="gap-2">
 					{OPTIONS.map((option) => {

@@ -171,6 +171,20 @@ export function useLaunchesData({ database, section, family, userData }) {
 		[database, loadData]
 	);
 
+	const darBaixa = useCallback(
+		async (item) => {
+			try {
+				await database.darBaixa(item.id_transacao);
+				setPage(1);
+				setHasMore(true);
+				await loadData(section, { silent: true, page: 1 });
+			} catch {
+				Alert.alert("Erro", "Falha ao dar baixa.");
+			}
+		},
+		[database, loadData, section]
+	);
+
 	const validItems = useMemo(
 		() => filterValidItems(items, section),
 		[items, section]
@@ -187,5 +201,6 @@ export function useLaunchesData({ database, section, family, userData }) {
 		deleteItem,
 		syncPessoa,
 		toggleRecorrenciaStatus,
+		darBaixa,
 	};
 }

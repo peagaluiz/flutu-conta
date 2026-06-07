@@ -81,6 +81,7 @@ export function useInsertForm() {
 			categoria: "",
 			pessoa: "",
 			data_vencimento: toISODate(new Date()),
+			data_baixa: toISODate(new Date()),
 			observacao: "",
 			share_with_family: false,
 			id_banco: null,
@@ -88,6 +89,15 @@ export function useInsertForm() {
 	});
 
 	const { reset, setValue } = form;
+
+	useEffect(() => {
+		const sub = form.watch((values, { name }) => {
+			if (name === "status" && values.status === "pago" && !values.data_baixa) {
+				form.setValue("data_baixa", toISODate(new Date()));
+			}
+		});
+		return () => sub.unsubscribe();
+	}, [form]);
 
 	useEffect(() => {
 		const t = setTimeout(() => setIsBooting(false), 350);
@@ -126,6 +136,9 @@ export function useInsertForm() {
 					categoria: t.categoria ?? "",
 					pessoa: t.pessoa ?? "",
 					data_vencimento: normalizeDate(t.data_vencimento) ?? "",
+					data_baixa:
+						normalizeDate(t.data_baixa) ??
+						(t.status === "pago" ? toISODate(new Date()) : ""),
 					observacao: t.observacao ?? "",
 					share_with_family: Number(t.is_family_shared || 0) === 1,
 					id_banco: t.id_banco ?? null,
@@ -217,9 +230,11 @@ export function useInsertForm() {
 				id_banco: resolvedBancoId,
 				family_id: data.share_with_family && family?.id ? Number(family.id) : null,
 				is_family_shared: data.share_with_family && family?.id ? 1 : 0,
-				user_id: userData?.id ?? null,
+				// Ao editar, não sobrescreve o user_id — preserva o dono original
+				user_id: editId ? null : (userData?.id ?? null),
 				data_transacao: new Date().toISOString(),
 				data_vencimento: normalizeDate(data.data_vencimento),
+				data_baixa: data.status === "pago" ? normalizeDate(data.data_baixa) : null,
 				status: data.status,
 				observacao: data.observacao || null,
 				json: JSON.stringify({ descricao: data.descricao || null }),

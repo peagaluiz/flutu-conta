@@ -13,6 +13,7 @@ export type TransacaoDatabase = {
 	user_id?: string | null;
 	data_transacao: string;
 	data_vencimento: string | null;
+	data_baixa?: string | null;
 	status: "pendente" | "pago";
 	observacao: string | null;
 	created_at: string;

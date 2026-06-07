@@ -174,7 +174,7 @@ export function ResumoFinanceiroCard({
 
 	return (
 		<>
-			<Box className="rounded-3xl px-5 py-5 border gap-4" style={cardStyle}>
+			<Box className="rounded-xl px-5 py-5 border gap-4" style={cardStyle}>
 				{/* Header */}
 				<Box className="flex-row items-center justify-between gap-3">
 					<Box className="flex-row items-center gap-2">

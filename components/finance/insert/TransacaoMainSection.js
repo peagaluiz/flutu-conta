@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { Switch } from "react-native";
-import { Controller } from "react-hook-form";
+import { Controller, useWatch } from "react-hook-form";
 import { Grid, GridItem } from "@/components/ui/grid";
 import { DatePickerDialog } from "@/components/ui/DatePickerDialog";
 import { HStack } from "@/components/ui/hstack";
@@ -45,6 +45,9 @@ export function TransacaoMainSection({
     const textPrimary = themeColors?.textPrimary;
     const textSecondary = themeColors?.textSecondary;
     const inputContainerStyle = { borderColor: inputBorderColor, backgroundColor: inputBackgroundColor };
+
+    const status = useWatch({ control, name: "status" });
+    const [showDataBaixaPicker, setShowDataBaixaPicker] = useState(false);
 
     return (
         <Grid
@@ -241,6 +244,54 @@ export function TransacaoMainSection({
                     )}
                 />
             </GridItem>
+
+            {status === "pago" ? (
+                <GridItem _extra={{ className: "col-span-12 lg:col-span-4" }}>
+                    <Controller
+                        control={control}
+                        name="data_baixa"
+                        render={({ field: { onChange, value } }) => (
+                            <FormControl size="md" isRequired isInvalid={!!errors.data_baixa} className="my-1">
+                                <FormControlLabel>
+                                    <FormControlLabelText>Data de baixa</FormControlLabelText>
+                                </FormControlLabel>
+
+                                <Pressable onPress={() => setShowDataBaixaPicker(true)}>
+                                    <Box
+                                        className="w-full h-10 rounded border px-3 flex-row items-center justify-between"
+                                        style={inputContainerStyle}
+                                    >
+                                        <HStack space="sm" className="items-center">
+                                            <CalendarDays size={16} color={textPrimary} />
+                                            <Text style={{ color: value ? textPrimary : textSecondary }}>
+                                                {formatDateDisplay(value)}
+                                            </Text>
+                                        </HStack>
+                                        <ChevronDown size={16} color={textPrimary} />
+                                    </Box>
+                                </Pressable>
+
+                                <DatePickerDialog
+                                    visible={showDataBaixaPicker}
+                                    locale="pt"
+                                    mode="single"
+                                    date={parseDateValue(value)}
+                                    onDismiss={() => setShowDataBaixaPicker(false)}
+                                    onConfirm={({ date }) => {
+                                        if (date) onChange(toISODate(date));
+                                    }}
+                                />
+
+                                {errors.data_baixa?.message ? (
+                                    <FormControlError>
+                                        <FormControlErrorText>{errors.data_baixa.message}</FormControlErrorText>
+                                    </FormControlError>
+                                ) : null}
+                            </FormControl>
+                        )}
+                    />
+                </GridItem>
+            ) : null}
 
             {canShareWithFamily ? (
                 <GridItem _extra={{ className: "col-span-12" }}>

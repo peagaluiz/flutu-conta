@@ -204,6 +204,7 @@ CREATE TABLE IF NOT EXISTS public.transacoes (
     user_id          UUID           REFERENCES auth.users(id) ON DELETE SET NULL,
     data_transacao   TIMESTAMPTZ    NOT NULL DEFAULT now(),
     data_vencimento  TIMESTAMPTZ,
+    data_baixa       TIMESTAMPTZ,
     status           TEXT           NOT NULL DEFAULT 'pendente', -- 'pendente' | 'pago'
     observacao       TEXT,
     json             JSONB,
@@ -692,6 +693,8 @@ CREATE POLICY "transacoes_update" ON public.transacoes FOR UPDATE
             AND private.is_familia_member(family_id))
     );
 
+-- Deleção física restrita ao dono. O app usa soft-delete (deleted=1 via UPDATE) para itens compartilhados,
+-- o que permite que qualquer membro da família "delete" via a policy transacoes_update.
 CREATE POLICY "transacoes_delete" ON public.transacoes FOR DELETE
     USING (user_id = auth.uid());
 

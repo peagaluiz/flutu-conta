@@ -4,44 +4,55 @@ import { VStack } from "@/components/ui/vstack";
 import { Text } from "@/components/ui/text";
 import ActionButton from "./ActionButton";
 import CardBase from "./CardBase";
-import { Pencil, Trash2 } from "lucide-react-native";
-import { formatCurrency } from "@/utils/finance/helpers";
+import { CheckCircle, Pencil, Trash2 } from "lucide-react-native";
+import { formatCurrency, formatDate } from "@/utils/finance/helpers";
 
-function TransacaoCard({ item, colors, onEdit, onDelete }) {
+function getDescricao(item) {
+	try {
+		const parsed = JSON.parse(item.json || "{}");
+		if (parsed?.descricao) return parsed.descricao;
+	} catch {}
+	return item.observacao || "";
+}
+
+function TransacaoCard({ item, colors, onEdit, onDelete, onDarBaixa }) {
+	const descricao = getDescricao(item);
 	return (
 		<CardBase colors={colors}>
 			<HStack className="items-start justify-between gap-3">
 				<VStack className="flex-1 gap-1">
 					<Text
 						className="font-semibold"
+						numberOfLines={1}
+						ellipsizeMode="tail"
 						style={{ color: colors.textPrimary }}
-					>
-						<Text style={{ color: colors.textSecondary }}>
-							{item.id_transacao ? `#${item.id_transacao} ` : ""}
-						</Text>
-						{item.descricao || item.categoria || "Transação"}
-					</Text>
-					{Number(item?.is_from_recurrence || 0) === 1 ? (
-						<Text
-							className="text-[11px]"
-							style={{ color: colors.textSecondary }}
-						>
-							Origem: recorrência
-						</Text>
-					) : null}
-					<Text
-						className="text-xs"
-						style={{ color: colors.textSecondary }}
-					>
-						{item.categoria || "Sem categoria"} •{" "}
-						{item.status || "pendente"}
-					</Text>
-					<Text
-						className="text-sm"
-						style={{ color: colors.textSecondary }}
 					>
 						{item.pessoa || "Sem pessoa"}
 					</Text>
+					<HStack className="items-center justify-between w-full">
+						<Text
+							className="text-xs"
+							style={{ color: colors.textSecondary }}
+						>
+							{item.categoria || "Sem categoria"}
+						</Text>
+						<Text
+							className="text-xs"
+							style={{ color: colors.textSecondary }}
+						>
+							{formatDate(item.data_vencimento)}
+						</Text>
+					</HStack>
+					{descricao ? (
+						<Text
+							className="text-xs"
+							numberOfLines={1}
+							ellipsizeMode="tail"
+							style={{ color: colors.textSecondary }}
+						>
+							{descricao}
+						</Text>
+					) : null}
 				</VStack>
 
 				<Text
@@ -52,7 +63,14 @@ function TransacaoCard({ item, colors, onEdit, onDelete }) {
 				</Text>
 			</HStack>
 
-			<HStack className="mt-3 gap-2">
+			<HStack className="mt-3 gap-2 flex-wrap">
+				<ActionButton
+					label="Dar Baixa"
+					icon={CheckCircle}
+					onPress={onDarBaixa}
+					colors={colors}
+					disabled={item.status !== "pendente"}
+				/>
 				<ActionButton
 					label="Editar"
 					icon={Pencil}

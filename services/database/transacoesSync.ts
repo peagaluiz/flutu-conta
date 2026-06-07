@@ -19,6 +19,7 @@ export type SyncSummary = {
 		imobilizado: { processed: number; synced: number; errors: number };
 		transacoes: { processed: number; synced: number; errors: number };
 		banco: { processed: number; synced: number; errors: number };
+		recorrencias: { processed: number; synced: number; errors: number };
 	};
 };
 
@@ -37,6 +38,7 @@ function createEmptySummary(): SyncSummary {
 			imobilizado: emptyTableSummary(),
 			transacoes: emptyTableSummary(),
 			banco: emptyTableSummary(),
+			recorrencias: emptyTableSummary(),
 		},
 	};
 }
@@ -65,6 +67,10 @@ function mergeSummary(target: SyncSummary, source: SyncSummary) {
 	target.tables.banco.processed += source.tables.banco.processed;
 	target.tables.banco.synced += source.tables.banco.synced;
 	target.tables.banco.errors += source.tables.banco.errors;
+
+	target.tables.recorrencias.processed += source.tables.recorrencias.processed;
+	target.tables.recorrencias.synced += source.tables.recorrencias.synced;
+	target.tables.recorrencias.errors += source.tables.recorrencias.errors;
 }
 
 async function getAuthUserId() {
@@ -276,6 +282,7 @@ async function toTransacaoPayload(row: any) {
 		user_id: row.user_id ?? null,
 		data_transacao: row.data_transacao ?? nowISO(),
 		data_vencimento: row.data_vencimento ?? null,
+		data_baixa: row.data_baixa ?? null,
 		status: row.status ?? "pendente",
 		observacao: row.observacao ?? null,
 		created_at: row.created_at ?? nowISO(),
@@ -751,7 +758,10 @@ async function syncPendingTransacoesInternal() {
 		try {
 			if (Number(row?.deleted || 0) === 1) {
 				if (row.remote_id) {
-					const { error } = await supabase.from("transacoes").delete().eq("id_transacao", row.remote_id);
+					const { error } = await supabase
+						.from("transacoes")
+						.update({ deleted: 1, updated_at: nowISO() })
+						.eq("id_transacao", row.remote_id);
 					if (error) throw error;
 				}
 
@@ -1024,6 +1034,112 @@ async function syncRemoteBancoDown(): Promise<SyncSummary> {
 	return summary;
 }
 
+async function syncPendingRecorrencias(summary: SyncSummary) {
+	if (!db || Platform.OS === "web") return;
+	const userId = await getAuthUserId();
+	if (!userId) return;
+
+	const pendingRows = await db.getAllAsync<any>(
+		`SELECT * FROM recorrencias
+         WHERE deleted = 0
+           AND sync_status = 'pending'
+           AND user_id = ?
+         ORDER BY id_recurrencia ASC
+         LIMIT 100`,
+		userId
+	);
+
+	for (const row of pendingRows ?? []) {
+		summary.tables.recorrencias.processed += 1;
+		summary.processed += 1;
+		try {
+			let templateJson: any = null;
+			try { templateJson = row.template_json ? JSON.parse(row.template_json) : null; } catch {}
+
+			const payload: any = {
+				uuid: row.uuid,
+				status: row.status ?? "ativa",
+				frequency: row.frequency,
+				interval_days: row.interval_days ?? null,
+				base_due_date: row.base_due_date,
+				next_due_date: row.next_due_date,
+				end_date: row.end_date ?? null,
+				template_json: templateJson,
+				occurrences_count: Number(row.occurrences_count ?? 0),
+				last_generated_at: row.last_generated_at ?? null,
+				user_id: row.user_id ?? userId,
+				family_id: row.family_id ?? null,
+				is_family_shared: Number(row.is_family_shared ?? 0),
+				skip_non_working: Number(row.skip_non_working ?? 0),
+				skip_direction: row.skip_direction ?? null,
+				deleted: Number(row.deleted ?? 0),
+			};
+
+			let remoteId = row.remote_id ?? null;
+
+			if (remoteId) {
+				const { error } = await supabase
+					.from("recorrencias")
+					.update({ ...payload, updated_at: nowISO() })
+					.eq("id_recurrencia", remoteId);
+				if (error) throw error;
+			} else {
+				const { data: inserted, error } = await supabase
+					.from("recorrencias")
+					.insert(payload)
+					.select("id_recurrencia")
+					.single();
+				if (error) throw error;
+				remoteId = inserted.id_recurrencia;
+			}
+
+			await db.runAsync(
+				`UPDATE recorrencias
+                 SET remote_id = ?, sync_status = 'synced', synced = 1, updated_at = ?
+                 WHERE id_recurrencia = ?`,
+				remoteId,
+				nowISO(),
+				row.id_recurrencia
+			);
+			summary.tables.recorrencias.synced += 1;
+			summary.synced += 1;
+		} catch {
+			summary.tables.recorrencias.errors += 1;
+			summary.errors += 1;
+			await db.runAsync(
+				`UPDATE recorrencias SET sync_status = 'error' WHERE id_recurrencia = ?`,
+				row.id_recurrencia
+			).catch(() => {});
+		}
+	}
+
+	// Soft deletes
+	const deletedRows = await db.getAllAsync<any>(
+		`SELECT * FROM recorrencias
+         WHERE deleted = 1
+           AND remote_id IS NOT NULL
+           AND sync_status = 'pending'
+           AND user_id = ?
+         LIMIT 50`,
+		userId
+	);
+
+	for (const row of deletedRows ?? []) {
+		try {
+			const { error } = await supabase
+				.from("recorrencias")
+				.update({ deleted: 1, updated_at: nowISO() })
+				.eq("id_recurrencia", row.remote_id);
+			if (!error) {
+				await db.runAsync(
+					`UPDATE recorrencias SET sync_status = 'synced', synced = 1 WHERE id_recurrencia = ?`,
+					row.id_recurrencia
+				);
+			}
+		} catch {}
+	}
+}
+
 async function syncAllPendingInternal(onProgress?: (step: string) => void) {
 	onProgress?.("Verificando dados locais...");
 	await backfillLocalOwnershipIfMissing();
@@ -1076,6 +1192,9 @@ async function syncAllPendingInternal(onProgress?: (step: string) => void) {
 	onProgress?.("Atualizando bancos...");
 	const bancoDown = await syncRemoteBancoDown();
 	mergeSummary(full, bancoDown);
+
+	onProgress?.("Enviando recorrências...");
+	await syncPendingRecorrencias(full);
 
 	return full;
 }
@@ -1132,6 +1251,7 @@ export async function fetchRemoteTransacaoById(id: number) {
 export async function upsertRemoteTransacaoLocally(remote: any) {
 	if (!db || !remote?.id_transacao) return null;
 
+	const remoteDeleted = Number(remote.deleted ?? 0) === 1;
 	const localPessoaId = await resolvePessoaLocalId(remote.id_pessoa ?? null);
 	const localImobilizadoId = await resolveImobilizadoLocalId(remote.id_imobilizado ?? null);
 
@@ -1146,6 +1266,18 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
 	);
 
 	if (existingByRemote) {
+		// Se o registro foi deletado remotamente, propagar a deleção para o local
+		if (remoteDeleted && Number(existingByRemote?.deleted || 0) === 0) {
+			await db.runAsync(
+				`UPDATE transacoes
+				 SET deleted = 1, sync_status = 'synced', synced = 1, data_sync = ?
+				 WHERE id_transacao = ?`,
+				nowISO(),
+				existingByRemote.id_transacao
+			);
+			return null;
+		}
+
 		if (Number(existingByRemote?.deleted || 0) === 1) return existingByRemote;
 
 		const isSameRow =
@@ -1160,6 +1292,7 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
 			String(existingByRemote?.user_id || "") === String(remote?.user_id || "") &&
 			String(existingByRemote?.data_transacao || "") === String(remote?.data_transacao || "") &&
 			String(existingByRemote?.data_vencimento || "") === String(remote?.data_vencimento || "") &&
+			String(existingByRemote?.data_baixa || "") === String(remote?.data_baixa || "") &&
 			String(existingByRemote?.status || "") === String(remote?.status || "") &&
 			String(existingByRemote?.observacao || "") === String(remote?.observacao || "") &&
 			String(existingByRemote?.json || "") === String(remote?.json || "") &&
@@ -1184,6 +1317,7 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
 			user_id = COALESCE(?, user_id),
             data_transacao = COALESCE(?, data_transacao),
             data_vencimento = ?,
+            data_baixa = ?,
             status = COALESCE(?, status),
             observacao = ?,
             updated_at = ?,
@@ -1205,6 +1339,7 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
 			remote.user_id ?? null,
 			remote.data_transacao ?? null,
 			remote.data_vencimento ?? null,
+			remote.data_baixa ?? null,
 			remote.status ?? null,
 			remote.observacao ?? null,
 			remote.updated_at ?? nowISO(),
@@ -1224,6 +1359,9 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
 		);
 	}
 
+	// Não inserir localmente um registro que já foi deletado remotamente
+	if (remoteDeleted) return null;
+
 	const inserted = await db.runAsync(
 		`
       INSERT INTO transacoes (
@@ -1239,6 +1377,7 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
 		user_id,
         data_transacao,
         data_vencimento,
+        data_baixa,
         status,
         observacao,
         json,
@@ -1248,7 +1387,7 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
         sync_status,
         synced,
         deleted
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
 		remote.id_transacao,
 		remote.tipo ?? null,
@@ -1262,6 +1401,7 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
 		remote.user_id ?? null,
 		remote.data_transacao ?? nowISO(),
 		remote.data_vencimento ?? null,
+		remote.data_baixa ?? null,
 		remote.status ?? "pendente",
 		remote.observacao ?? null,
 		remote.json ?? null,

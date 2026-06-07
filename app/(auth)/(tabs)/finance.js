@@ -4,7 +4,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Box } from "@/components/ui/box";
 import { HStack } from "@/components/ui/hstack";
 import { Text } from "@/components/ui/text";
-import { Pressable } from "@/components/ui/pressable";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import {
 	Actionsheet,
@@ -20,6 +19,7 @@ import { getThemeColors } from "@/constants/colors";
 import { useDatabase } from "@/hooks/useDatabase";
 import { useAuth } from "@/state/AuthContext";
 import { useFinanceDate } from "@/state/FinanceDateContext";
+import { useFinanceVisibilityScope } from "@/state/FinanceVisibilityScopeContext";
 import { formatCurrency, formatDate } from "@/utils/finance/helpers";
 import {
 	applyVisibilityScopeFilter,
@@ -32,12 +32,6 @@ import { FinanceResumoSection } from "@/components/finance/dashboard/FinanceResu
 import { FinanceMonthlyChartSection } from "@/components/finance/dashboard/FinanceMonthlyChartSection";
 import { FinanceCategoryChartSection } from "@/components/finance/dashboard/FinanceCategoryChartSection";
 import { useSyncProgress } from "@/state/SyncProgressContext";
-
-const VISIBILITY_OPTIONS = [
-	{ value: "all", label: "Todos" },
-	{ value: "mine", label: "Meus" },
-	{ value: "family", label: "Família" },
-];
 
 function FinanceSkeleton() {
 	return (
@@ -56,12 +50,12 @@ export default function Finance() {
 	const colors = getThemeColors(theme);
 	const database = useDatabase();
 	const { userData, family } = useAuth();
-	const { dateRange } = useFinanceDate();
+	const { dateRange, dateField } = useFinanceDate();
 
 	const { startSync, endSync, updateStep } = useSyncProgress();
+	const { visibilityScope, setVisibilityScope } = useFinanceVisibilityScope();
 	const [loading, setLoading] = useState(true);
 	const [refreshing, setRefreshing] = useState(false);
-	const [visibilityScope, setVisibilityScope] = useState("all");
 	const [items, setItems] = useState([]);
 	const [detailSheetOpen, setDetailSheetOpen] = useState(false);
 	const [detailTitle, setDetailTitle] = useState("Detalhes");
@@ -111,6 +105,7 @@ export default function Finance() {
 					limit: 500,
 					dateFrom: dateRange.start,
 					dateTo: dateRange.end,
+					dateField: dateField ?? "data_vencimento",
 					visibilityScope: canUseFamilyScope ? visibilityScope : "mine",
 					userId: userData?.id ?? null,
 					familyId: activeFamilyId,
@@ -126,6 +121,7 @@ export default function Finance() {
 			activeFamilyId,
 			canUseFamilyScope,
 			database,
+			dateField,
 			dateRange.end,
 			dateRange.start,
 			userData?.id,
@@ -171,62 +167,6 @@ export default function Finance() {
 				}
 			>
 				<Box className="gap-4 px-3 pt-3" style={{ minHeight: "100%" }}>
-					{canUseFamilyScope && (
-						<Box
-							className="rounded-xl border p-3"
-							style={{
-								backgroundColor: colors.surface,
-								borderColor: colors.border,
-							}}
-						>
-							<HStack className="items-center justify-between">
-								<Text
-									className="text-sm font-semibold"
-									style={{ color: colors.textPrimary }}
-								>
-									Família
-								</Text>
-								<HStack className="gap-2">
-									{VISIBILITY_OPTIONS.map((option) => {
-										const active =
-											option.value === visibilityScope;
-										return (
-											<Pressable
-												key={option.value}
-												onPress={() =>
-													setVisibilityScope(option.value)
-												}
-											>
-												<Box
-													className="rounded-full border px-3 py-1"
-													style={{
-														borderColor: active
-															? colors.textPrimary
-															: colors.border,
-														backgroundColor: active
-															? colors.textPrimary
-															: colors.surface,
-													}}
-												>
-													<Text
-														className="text-xs font-medium"
-														style={{
-															color: active
-																? colors.surface
-																: colors.textSecondary,
-														}}
-													>
-														{option.label}
-													</Text>
-												</Box>
-											</Pressable>
-										);
-									})}
-								</HStack>
-							</HStack>
-						</Box>
-					)}
-
 					{loading ? (
 						<FinanceSkeleton />
 					) : (

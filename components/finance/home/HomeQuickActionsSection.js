@@ -13,7 +13,7 @@ export function HomeQuickActionsSection({ actions }) {
 
 	return (
 		<Box
-			className="rounded-2xl border p-4 gap-3"
+			className="rounded-xl border p-4 gap-3"
 			style={{
 				backgroundColor: colors.surface,
 				borderColor: colors.border,

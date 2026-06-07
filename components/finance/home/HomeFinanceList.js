@@ -21,26 +21,28 @@ export default function HomeFinanceList() {
 	const {
 		loading,
 		refreshing,
-		filterType,
-		setFilterType,
 		visibilityScope,
 		setVisibilityScope,
 		dateRange,
 		setDateRange,
+		dateField,
+		setDateField,
 		hasFamily,
 		dateRangeLabel,
 		isFilterActive,
 		quickActions,
-		lancamentosFiltrados,
+		lancamentos,
 		resumo,
 		banksResumo,
 		onRefresh,
 		handlePressItem,
+		handleDeleteItem,
+		handleDarBaixa,
+		handleRemoverBaixa,
 		name,
 	} = useHomeFinance();
 
 	const [filterModalOpen, setFilterModalOpen] = useState(false);
-	const [showFilterSheet, setShowFilterSheet] = useState(false);
 
 	return (
 		<>
@@ -76,13 +78,11 @@ export default function HomeFinanceList() {
 					)}
 					<HomeTransactionsSection
 						loading={loading}
-						items={lancamentosFiltrados}
-						filterType={filterType}
-						isFilterSheetOpen={showFilterSheet}
-						onOpenFilterSheet={() => setShowFilterSheet(true)}
-						onCloseFilterSheet={() => setShowFilterSheet(false)}
-						onChangeFilter={setFilterType}
+						items={lancamentos}
 						onPressItem={handlePressItem}
+						onDeleteItem={handleDeleteItem}
+						onDarBaixa={handleDarBaixa}
+						onRemoverBaixa={handleRemoverBaixa}
 						onPressSeeAll={() =>
 							router.push("/(auth)/(tabs)/launches")
 						}
@@ -93,10 +93,12 @@ export default function HomeFinanceList() {
 			<HomeDateFilterModal
 				isOpen={filterModalOpen}
 				dateRange={dateRange}
+				dateField={dateField}
 				onClose={() => setFilterModalOpen(false)}
-				onApply={({ start, end }) =>
-					setDateRange({ start, end })
-				}
+				onApply={({ start, end, dateField: newField }) => {
+					setDateRange({ start, end });
+					setDateField(newField);
+				}}
 			/>
 		</>
 	);

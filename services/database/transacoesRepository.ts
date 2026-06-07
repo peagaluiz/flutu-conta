@@ -140,6 +140,7 @@ async function insertTransacaoLocal(
 		user_id,
         data_transacao,
         data_vencimento,
+        data_baixa,
         status,
         observacao,
         json,
@@ -149,7 +150,7 @@ async function insertTransacaoLocal(
         sync_status,
         synced,
         deleted
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
 		null,
 		data.tipo,
@@ -164,6 +165,7 @@ async function insertTransacaoLocal(
 		data.user_id ?? null,
 		data.data_transacao ?? nowISO(),
 		data.data_vencimento ?? null,
+		data.data_baixa ?? null,
 		data.status ?? "pendente",
 		data.observacao ?? null,
 		data.json ?? null,
@@ -282,6 +284,7 @@ export function createTransacoesRepository() {
 			  user_id = COALESCE(?, user_id),
               data_transacao = COALESCE(?, data_transacao),
               data_vencimento = ?,
+              data_baixa = ?,
               status = COALESCE(?, status),
               observacao = ?,
               json = ?,
@@ -302,6 +305,7 @@ export function createTransacoesRepository() {
 				data.user_id ?? null,
 				data.data_transacao ?? null,
 				data.data_vencimento ?? null,
+				data.data_baixa ?? null,
 				data.status ?? null,
 				data.observacao ?? null,
 				data.json ?? null,
@@ -347,6 +351,7 @@ export function createTransacoesRepository() {
 				limit?: number;
 				dateFrom?: string;
 				dateTo?: string;
+				dateField?: "data_vencimento" | "data_baixa";
 				fallbackRemoteOnMiss?: boolean;
 				visibilityScope?: VisibilityScope;
 				userId?: string | null;
@@ -377,12 +382,16 @@ export function createTransacoesRepository() {
 					query = query.eq("id_transacao", id);
 				}
 
-				if (params?.dateFrom) {
-					query = query.or(`data_vencimento.gte.${params.dateFrom},and(data_vencimento.is.null,data_transacao.gte.${params.dateFrom})`);
-				}
-
-				if (params?.dateTo) {
-					query = query.or(`data_vencimento.lte.${params.dateTo},and(data_vencimento.is.null,data_transacao.lte.${params.dateTo})`);
+				if (params?.dateField === "data_baixa") {
+					if (params?.dateFrom) query = query.gte("data_baixa", params.dateFrom);
+					if (params?.dateTo) query = query.lte("data_baixa", params.dateTo);
+				} else {
+					if (params?.dateFrom) {
+						query = query.or(`data_vencimento.gte.${params.dateFrom},and(data_vencimento.is.null,data_transacao.gte.${params.dateFrom})`);
+					}
+					if (params?.dateTo) {
+						query = query.or(`data_vencimento.lte.${params.dateTo},and(data_vencimento.is.null,data_transacao.lte.${params.dateTo})`);
+					}
 				}
 
 				if (!id && params?.page && params?.limit) {
@@ -484,8 +493,8 @@ export function createTransacoesRepository() {
 					AND r.deleted = 0
 				WHERE t.deleted = 0
 				  AND ${localVisibility.where}
-				  ${params?.dateFrom ? "AND substr(COALESCE(t.data_vencimento, t.data_transacao), 1, 10) >= ?" : ""}
-				  ${params?.dateTo ? "AND substr(COALESCE(t.data_vencimento, t.data_transacao), 1, 10) <= ?" : ""}
+				  ${params?.dateFrom ? `AND substr(${params?.dateField === "data_baixa" ? "t.data_baixa" : "COALESCE(t.data_vencimento, t.data_transacao)"}, 1, 10) >= ?` : ""}
+				  ${params?.dateTo ? `AND substr(${params?.dateField === "data_baixa" ? "t.data_baixa" : "COALESCE(t.data_vencimento, t.data_transacao)"}, 1, 10) <= ?` : ""}
 				ORDER BY t.id_transacao DESC
 				LIMIT ? OFFSET ?
 			`,
@@ -514,6 +523,39 @@ export function createTransacoesRepository() {
 			pauseRecorrencia,
 			activateRecorrencia,
 			deleteRecorrencia,
+
+		darBaixa: async (id_transacao: number, dataBaixa?: string | null) => {
+			if (!db) throw new Error("Banco local indisponivel");
+			await db.runAsync(
+				`UPDATE transacoes
+				 SET status = 'pago',
+				     data_baixa = ?,
+				     updated_at = ?,
+				     sync_status = 'pending',
+				     synced = 0
+				 WHERE id_transacao = ?`,
+				dataBaixa || nowISO(),
+				nowISO(),
+				id_transacao
+			);
+			return { updated: true };
+		},
+
+		removerBaixa: async (id_transacao: number) => {
+			if (!db) throw new Error("Banco local indisponivel");
+			await db.runAsync(
+				`UPDATE transacoes
+				 SET status = 'pendente',
+				     data_baixa = NULL,
+				     updated_at = ?,
+				     sync_status = 'pending',
+				     synced = 0
+				 WHERE id_transacao = ?`,
+				nowISO(),
+				id_transacao
+			);
+			return { updated: true };
+		},
 
 		getPessoasSuggestions: async (search?: string, limit = 8) => {
 			const term = (search || "").trim().toLowerCase();

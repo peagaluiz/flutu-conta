@@ -1,41 +1,82 @@
-import { Funnel, MoreHorizontal, Wallet } from "lucide-react-native";
+import { useState } from "react";
+import { Alert } from "react-native";
+import { CheckCircle, MoreHorizontal, Pencil, Trash2, Wallet, XCircle } from "lucide-react-native";
 
 import { Box } from "@/components/ui/box";
 import { HStack } from "@/components/ui/hstack";
 import { Text } from "@/components/ui/text";
 import { Pressable } from "@/components/ui/pressable";
+import { Divider } from "@/components/ui/divider";
 import Loader from "@/components/ui/loader";
+import { DatePickerDialog } from "@/components/ui/DatePickerDialog";
 import { useTheme } from "@/components/ui/gluestack-ui-provider/ThemeProvider/ThemeProvider";
 import { getThemeColors } from "@/constants/colors";
+import { toISODateString } from "@/utils/finance/helpers";
 import { LancamentoListItem } from "@/components/finance/home/LancamentoListItem";
 import {
-	Actionsheet,
-	ActionsheetBackdrop,
-	ActionsheetContent,
-	ActionsheetDragIndicator,
-	ActionsheetDragIndicatorWrapper,
-	ActionsheetItem,
-	ActionsheetItemText,
-} from "@/components/ui/actionsheet";
-import {
-	getFilterLabel,
-	TRANSACTION_FILTER_OPTIONS,
-} from "@/utils/finance/homeScreenHelpers";
+	Modal,
+	ModalBackdrop,
+	ModalContent,
+	ModalHeader,
+	ModalBody,
+	ModalFooter,
+} from "@/components/ui/modal";
+import { Button, ButtonText } from "@/components/ui/button";
 
 export function HomeTransactionsSection({
 	loading,
 	items,
-	filterType,
-	isFilterSheetOpen,
-	onOpenFilterSheet,
-	onCloseFilterSheet,
-	onChangeFilter,
 	onPressItem,
+	onDeleteItem,
+	onDarBaixa,
+	onRemoverBaixa,
 	onPressSeeAll,
 	previewLimit = 3,
 }) {
 	const { theme } = useTheme();
 	const colors = getThemeColors(theme);
+
+	const [menuItem, setMenuItem] = useState(null);
+	const [showDatePicker, setShowDatePicker] = useState(false);
+
+	const closeMenu = () => setMenuItem(null);
+
+	const handleEditar = () => {
+		const item = menuItem;
+		closeMenu();
+		if (item) onPressItem(item);
+	};
+
+	const handleAbrirBaixa = () => {
+		setShowDatePicker(true);
+	};
+
+	const handleConfirmBaixa = ({ date }) => {
+		setShowDatePicker(false);
+		const item = menuItem;
+		closeMenu();
+		if (item && date) onDarBaixa?.(item, toISODateString(date));
+	};
+
+	const handleRemoverBaixaPress = () => {
+		const item = menuItem;
+		closeMenu();
+		if (item) onRemoverBaixa?.(item);
+	};
+
+	const handleExcluir = () => {
+		const item = menuItem;
+		closeMenu();
+		if (!item) return;
+		Alert.alert("Excluir", "Deseja excluir este lançamento?", [
+			{ text: "Cancelar", style: "cancel" },
+			{
+				text: "Excluir",
+				style: "destructive",
+				onPress: () => onDeleteItem?.(item),
+			},
+		]);
+	};
 
 	return (
 		<Box
@@ -55,19 +96,7 @@ export function HomeTransactionsSection({
 						Últimos lançamentos
 					</Text>
 				</HStack>
-				<Pressable onPress={onOpenFilterSheet}>
-					<Box
-						className="p-2 rounded-md border"
-						style={{ borderColor: colors.borderStrong }}
-					>
-						<Funnel size={16} color={colors.textPrimary} />
-					</Box>
-				</Pressable>
 			</Box>
-
-			<Text className="text-xs" style={{ color: colors.textSecondary }}>
-				Filtro: {getFilterLabel(filterType)}
-			</Text>
 
 			{loading ? (
 				<Box style={{ minHeight: 180 }}>
@@ -84,6 +113,7 @@ export function HomeTransactionsSection({
 							key={String(item.id_transacao)}
 							item={item}
 							onPress={() => onPressItem(item)}
+							onLongPress={() => setMenuItem(item)}
 						/>
 					))}
 
@@ -112,38 +142,81 @@ export function HomeTransactionsSection({
 				</Box>
 			)}
 
-			<Actionsheet
-				isOpen={isFilterSheetOpen}
-				onClose={onCloseFilterSheet}
-			>
-				<ActionsheetBackdrop />
-				<ActionsheetContent>
-					<ActionsheetDragIndicatorWrapper>
-						<ActionsheetDragIndicator />
-					</ActionsheetDragIndicatorWrapper>
-
-					{TRANSACTION_FILTER_OPTIONS.map((option, index) => (
-						<ActionsheetItem
-							key={option.value}
-							style={{
-								marginBottom:
-									index ===
-									TRANSACTION_FILTER_OPTIONS.length - 1
-										? 35
-										: 5,
-							}}
-							onPress={() => {
-								onChangeFilter(option.value);
-								onCloseFilterSheet();
-							}}
+			<Modal isOpen={!!menuItem} onClose={closeMenu} size="md">
+				<ModalBackdrop />
+				<ModalContent>
+					<ModalHeader>
+						<Text
+							className="text-lg font-semibold"
+							style={{ color: colors.textPrimary }}
+							numberOfLines={1}
 						>
-							<ActionsheetItemText>
-								{option.label}
-							</ActionsheetItemText>
-						</ActionsheetItem>
-					))}
-				</ActionsheetContent>
-			</Actionsheet>
+							{menuItem?.pessoa || menuItem?.categoria || "Lançamento"}
+						</Text>
+					</ModalHeader>
+					<ModalBody className="gap-1">
+						<Pressable
+							onPress={handleEditar}
+							className="flex-row items-center gap-3 py-3 px-1 rounded-lg"
+						>
+							<Pencil size={20} color={colors.textPrimary} />
+							<Text style={{ color: colors.textPrimary }} className="text-base">
+								Editar
+							</Text>
+						</Pressable>
+
+						<Divider style={{ backgroundColor: colors.border }} />
+
+						{menuItem?.status !== "pago" ? (
+							<Pressable
+								onPress={handleAbrirBaixa}
+								className="flex-row items-center gap-3 py-3 px-1 rounded-lg"
+							>
+								<CheckCircle size={20} color={colors.textPrimary} />
+								<Text style={{ color: colors.textPrimary }} className="text-base">
+									Dar baixa
+								</Text>
+							</Pressable>
+						) : (
+							<Pressable
+								onPress={handleRemoverBaixaPress}
+								className="flex-row items-center gap-3 py-3 px-1 rounded-lg"
+							>
+								<XCircle size={20} color={colors.textPrimary} />
+								<Text style={{ color: colors.textPrimary }} className="text-base">
+									Remover baixa
+								</Text>
+							</Pressable>
+						)}
+
+						<Divider style={{ backgroundColor: colors.border }} />
+
+						<Pressable
+							onPress={handleExcluir}
+							className="flex-row items-center gap-3 py-3 px-1 rounded-lg"
+						>
+							<Trash2 size={20} color={colors.dangerText} />
+							<Text style={{ color: colors.dangerText }} className="text-base">
+								Excluir
+							</Text>
+						</Pressable>
+					</ModalBody>
+					<ModalFooter>
+						<Button action="secondary" variant="outline" onPress={closeMenu}>
+							<ButtonText>Cancelar</ButtonText>
+						</Button>
+					</ModalFooter>
+				</ModalContent>
+			</Modal>
+
+			<DatePickerDialog
+				visible={showDatePicker}
+				locale="pt"
+				mode="single"
+				date={new Date()}
+				onDismiss={() => setShowDatePicker(false)}
+				onConfirm={handleConfirmBaixa}
+			/>
 		</Box>
 	);
 }

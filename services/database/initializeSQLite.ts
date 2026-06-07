@@ -90,6 +90,7 @@ export async function initializeSQLite(database: SQLiteDatabase) {
 			user_id          TEXT,
 			data_transacao   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 			data_vencimento  TEXT,
+			data_baixa       TEXT,
 			status           TEXT NOT NULL DEFAULT 'pendente',
 			observacao       TEXT,
 			json             TEXT,
@@ -124,6 +125,8 @@ export async function initializeSQLite(database: SQLiteDatabase) {
 			is_family_shared  INTEGER NOT NULL DEFAULT 0,
 			created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 			updated_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+			sync_status       TEXT NOT NULL DEFAULT 'pending',
+			synced            INTEGER NOT NULL DEFAULT 0,
 			deleted           INTEGER NOT NULL DEFAULT 0
 		);
 	`);
@@ -169,6 +172,7 @@ export async function initializeSQLite(database: SQLiteDatabase) {
 	await safeAddColumn("ALTER TABLE transacoes ADD COLUMN is_family_shared INTEGER DEFAULT 0;");
 	await safeAddColumn("ALTER TABLE transacoes ADD COLUMN user_id TEXT;");
 	await safeAddColumn("ALTER TABLE transacoes ADD COLUMN id_banco INTEGER;");
+	await safeAddColumn("ALTER TABLE transacoes ADD COLUMN data_baixa TEXT;");
 
 	await safeAddColumn("ALTER TABLE pessoa ADD COLUMN family_id INTEGER;");
 	await safeAddColumn("ALTER TABLE pessoa ADD COLUMN is_family_shared INTEGER DEFAULT 0;");
@@ -188,6 +192,8 @@ export async function initializeSQLite(database: SQLiteDatabase) {
 	await safeAddColumn("ALTER TABLE recorrencias ADD COLUMN remote_id INTEGER;");
 	await safeAddColumn("ALTER TABLE recorrencias ADD COLUMN skip_non_working INTEGER DEFAULT 0;");
 	await safeAddColumn("ALTER TABLE recorrencias ADD COLUMN skip_direction TEXT;");
+	await safeAddColumn("ALTER TABLE recorrencias ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'pending';");
+	await safeAddColumn("ALTER TABLE recorrencias ADD COLUMN synced INTEGER NOT NULL DEFAULT 0;");
 
 	await database.execAsync("DROP INDEX IF EXISTS idx_recorrencia_transacoes_recurrencia;");
 

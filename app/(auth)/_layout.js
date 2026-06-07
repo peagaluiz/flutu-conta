@@ -5,6 +5,7 @@ import { useTheme } from "@/components/ui/gluestack-ui-provider/ThemeProvider/Th
 import { useAuth } from "@/state/AuthContext";
 import { Redirect, Stack } from "expo-router";
 import { FinanceDateProvider } from "@/state/FinanceDateContext";
+import { FinanceVisibilityScopeProvider } from "@/state/FinanceVisibilityScopeContext";
 import Animated, {
 	useSharedValue,
 	useAnimatedStyle,
@@ -83,6 +84,7 @@ function StackLayoutInner() {
 
 	return (
 		<FinanceDateProvider>
+		<FinanceVisibilityScopeProvider>
 		<View style={{ flex: 1 }}>
 			<Stack screenOptions={{ headerBackVisible: false, animation: "none" }}>
 				<Stack.Screen name="(stack)" options={{ headerShown: false }} />
@@ -113,6 +115,7 @@ function StackLayoutInner() {
 				</Animated.View>
 			)}
 		</View>
+		</FinanceVisibilityScopeProvider>
 		</FinanceDateProvider>
 	);
 }

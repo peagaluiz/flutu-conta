@@ -4,12 +4,12 @@ import { useDatabase } from "@/hooks/useDatabase";
 import { useAuth } from "@/state/AuthContext";
 import { useSyncProgress } from "@/state/SyncProgressContext";
 import { useFinanceDate } from "@/state/FinanceDateContext";
+import { useFinanceVisibilityScope } from "@/state/FinanceVisibilityScopeContext";
 import {
 	buildDefaultHomeDateRange,
 	buildInsertParams,
 	buildQuickActions,
 	calculateResumo,
-	filterLancamentosByRange,
 	formatHomeDateRangeLabel,
 	getLatestLancamento,
 } from "@/utils/finance/homeScreenHelpers";
@@ -21,14 +21,13 @@ export function useHomeFinance() {
 	const { userData, family } = useAuth();
 	const { startSync, endSync, updateStep } = useSyncProgress();
 
-	const { dateRange, setDateRange } = useFinanceDate();
+	const { dateRange, setDateRange, dateField, setDateField } = useFinanceDate();
+	const { visibilityScope, setVisibilityScope } = useFinanceVisibilityScope();
 
 	const [loading, setLoading] = useState(true);
 	const [refreshing, setRefreshing] = useState(false);
 	const [lancamentos, setLancamentos] = useState([]);
 	const [banks, setBanks] = useState([]);
-	const [filterType, setFilterType] = useState("all");
-	const [visibilityScope, setVisibilityScope] = useState("all");
 
 	const hasFamily = Number(family?.id || userData?.familyId || 0) > 0;
 	const activeFamilyId = Number(family?.id || userData?.familyId || 0) || null;
@@ -38,11 +37,12 @@ export function useHomeFinance() {
 		() => ({
 			dateFrom: dateRange.start,
 			dateTo: dateRange.end,
+			dateField: dateField ?? "data_vencimento",
 			visibilityScope: effectiveScope,
 			userId: userData?.id ?? null,
 			familyId: activeFamilyId,
 		}),
-		[activeFamilyId, dateRange.end, dateRange.start, effectiveScope, userData?.id]
+		[activeFamilyId, dateField, dateRange.end, dateRange.start, effectiveScope, userData?.id]
 	);
 
 	useEffect(() => {
@@ -101,6 +101,47 @@ export function useHomeFinance() {
 		}
 	}, [activeFamilyId, database, effectiveScope, endSync, queryParams, startSync, updateStep, userData?.id]);
 
+	const reload = useCallback(async () => {
+		try {
+			const [data, bancoData] = await Promise.all([
+				database.getTransacao(undefined, queryParams),
+				database.listBancos({
+					visibilityScope: effectiveScope,
+					userId: userData?.id ?? null,
+					familyId: activeFamilyId,
+				}),
+			]);
+			setLancamentos(Array.isArray(data) ? data : []);
+			setBanks(Array.isArray(bancoData) ? bancoData : []);
+		} catch {
+			// silent reload error
+		}
+	}, [activeFamilyId, database, effectiveScope, queryParams, userData?.id]);
+
+	const handleDeleteItem = useCallback(
+		async (item) => {
+			await database.deleteTransacao(item.id_transacao);
+			await reload();
+		},
+		[database, reload]
+	);
+
+	const handleDarBaixa = useCallback(
+		async (item, dataBaixa) => {
+			await database.darBaixa(item.id_transacao, dataBaixa);
+			await reload();
+		},
+		[database, reload]
+	);
+
+	const handleRemoverBaixa = useCallback(
+		async (item) => {
+			await database.removerBaixa(item.id_transacao);
+			await reload();
+		},
+		[database, reload]
+	);
+
 	const todayISO = useMemo(() => toISODateString(new Date()), []);
 
 	const openInsert = useCallback(
@@ -144,11 +185,6 @@ export function useHomeFinance() {
 	const isFilterActive =
 		dateRange.start !== defaultRange.start || dateRange.end !== defaultRange.end;
 
-	const lancamentosFiltrados = useMemo(
-		() => filterLancamentosByRange(lancamentos, filterType),
-		[lancamentos, filterType]
-	);
-
 	const resumo = useMemo(() => calculateResumo(lancamentos), [lancamentos]);
 
 	const banksResumo = useMemo(() => {
@@ -170,22 +206,25 @@ export function useHomeFinance() {
 	return {
 		loading,
 		refreshing,
-		filterType,
-		setFilterType,
 		visibilityScope,
 		setVisibilityScope,
 		dateRange,
 		setDateRange,
+		dateField,
+		setDateField,
 		hasFamily,
 		dateRangeLabel,
 		isFilterActive,
 		quickActions,
-		lancamentosFiltrados,
+		lancamentos,
 		resumo,
 		banksResumo,
 		onRefresh,
 		openInsert,
 		handlePressItem,
+		handleDeleteItem,
+		handleDarBaixa,
+		handleRemoverBaixa,
 		name: userData?.nome,
 	};
 }

@@ -51,6 +51,7 @@ export default function Launches() {
 		deleteItem,
 		syncPessoa,
 		toggleRecorrenciaStatus,
+		darBaixa,
 	} = useLaunchesData({ database, section, family, userData });
 
 	const {
@@ -107,6 +108,7 @@ export default function Launches() {
 						colors={colors}
 						onEdit={() => openEdit(item)}
 						onDelete={() => deleteItem(item)}
+						onDarBaixa={() => darBaixa(item)}
 					/>
 				);
 			}
@@ -161,7 +163,7 @@ export default function Launches() {
 			}
 			return null;
 		},
-		[colors, deleteItem, openEdit, syncPessoa, toggleRecorrenciaStatus, section]
+		[colors, deleteItem, openEdit, syncPessoa, toggleRecorrenciaStatus, darBaixa, section]
 	);
 
 	return (

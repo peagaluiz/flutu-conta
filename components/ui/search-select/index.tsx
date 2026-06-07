@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { FlatList, Keyboard, Dimensions } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
     useSharedValue,
     withSpring,
@@ -46,6 +47,8 @@ type Option = string | NormalizedOption;
 
 const SCREEN_HEIGHT = Dimensions.get("window").height;
 const MAX_HEIGHT = SCREEN_HEIGHT * 0.55;
+// Drag indicator (~16) + padding do ActionsheetContent (pt-2 + p-5 ≈ 28)
+const SHEET_HEADER_HEIGHT = 44;
 
 // ─── Sheet (parte interna do actionsheet, controlada externamente) ───────────
 
@@ -80,6 +83,7 @@ export function SearchableSelectSheet({
     allowCreateOption = false,
     getCreateLabel,
 }: SearchableSelectSheetProps) {
+    const insets = useSafeAreaInsets();
     const [searchTerm, setSearchTerm] = useState("");
     const [shouldAutoFocus, setShouldAutoFocus] = useState(false);
     // translateY do wrapper ao redor do ActionsheetContent.
@@ -118,12 +122,17 @@ export function SearchableSelectSheet({
         height: "100%",
     }));
 
-    const containerStyle = {
-        width: "100%" as const,
+    // Espaço livre acima do teclado = tela - insetTopo - teclado - cabeçalho do sheet.
+    // kbOffset.value é negativo (= -alturaTeclado) quando o teclado está aberto.
+    const availableHeight =
+        SCREEN_HEIGHT - insets.top - SHEET_HEADER_HEIGHT;
+
+    const containerStyle = useAnimatedStyle(() => ({
+        width: "100%",
         paddingHorizontal: 8,
         paddingBottom: 16,
-        height: MAX_HEIGHT,
-    };
+        height: Math.min(MAX_HEIGHT, availableHeight + kbOffset.value),
+    }));
 
     const textPrimary = themeColors?.textPrimary;
     const textSecondary = themeColors?.textSecondary;
@@ -179,7 +188,7 @@ export function SearchableSelectSheet({
                         <ActionsheetDragIndicator />
                     </ActionsheetDragIndicatorWrapper>
 
-                    <Box style={containerStyle}>
+                    <Animated.View style={containerStyle}>
                         <MaskedFormInput
                             label=""
                             placeholder={searchPlaceholder}
@@ -241,7 +250,7 @@ export function SearchableSelectSheet({
                                 }
                             />
                         </Box>
-                    </Box>
+                    </Animated.View>
                 </ActionsheetContent>
             </Animated.View>
         </Actionsheet>
