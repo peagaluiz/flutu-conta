@@ -8,11 +8,24 @@ export const launchLoaders = {
             visibilityScope: options.visibilityScope,
             userId: options.userId ?? null,
             familyId: options.familyId ?? null,
+            dateFrom: options.dateFrom ?? undefined,
+            dateTo: options.dateTo ?? undefined,
+            dateField: options.dateField ?? undefined,
         });
         return normalizeTransacoes(rows);
     },
-    pessoas: (database) => database.listPessoasWithPending(),
-    imobilizados: (database) => database.listImobilizados(),
+    pessoas: (database, options = {}) =>
+        database.listPessoasWithPending({
+            visibilityScope: options.visibilityScope,
+            userId: options.userId ?? null,
+            familyId: options.familyId ?? null,
+        }),
+    imobilizados: (database, options = {}) =>
+        database.listImobilizados({
+            visibilityScope: options.visibilityScope,
+            userId: options.userId ?? null,
+            familyId: options.familyId ?? null,
+        }),
     recorrencias: (database, options = {}) =>
         database.listRecorrencias({
             visibilityScope: options.visibilityScope,

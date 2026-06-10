@@ -41,12 +41,14 @@ export function BankSelectorButton({
     onSelect,
     themeColors,
     actionSheetContentStyle,
+    disabled = false,
 }) {
     const [showSheet, setShowSheet] = useState(false);
 
     const hasSelection = selectedCatalogBanco !== null && selectedCatalogBanco !== undefined;
 
     const handlePress = () => {
+        if (disabled) return;
         if (hasSelection) {
             onSelect(null);
         } else {
@@ -63,8 +65,8 @@ export function BankSelectorButton({
 
     return (
         <>
-            <Pressable onPress={handlePress} hitSlop={10}>
-                <Box style={{ position: "relative", width: 38, height: 38 }}>
+            <Pressable onPress={handlePress} hitSlop={10} disabled={disabled}>
+                <Box style={{ position: "relative", width: 38, height: 38, opacity: disabled ? 0.4 : 1 }}>
                     <Box
                         style={{
                             width: 35,

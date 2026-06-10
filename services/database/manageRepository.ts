@@ -185,8 +185,8 @@ async function resolveVisibilityContext(params?: VisibilityParams) {
 		};
 	}
 
-	const { data } = await supabase.auth.getUser();
-	const user = data?.user;
+	const { data } = await supabase.auth.getSession();
+	const user = data?.session?.user;
 	const metadataFamilyId = Number(
 		(user?.user_metadata?.family_id as number | string | undefined) ??
 		(user?.app_metadata?.family_id as number | string | undefined) ??
@@ -347,6 +347,7 @@ export function createManageRepository() {
 			if (!db) return [];
 
 			const sqlVisibility = buildSqlVisibilityClause("p", visibility);
+			const tVisibility = buildSqlVisibilityClause("transacoes", visibility);
 
 			const cadastradas = await db.getAllAsync<PessoaWithPending>(
 				`
@@ -371,6 +372,7 @@ export function createManageRepository() {
           WHERE deleted = 0
             AND id_pessoa IS NULL
             AND TRIM(COALESCE(pessoa, '')) <> ''
+            AND ${tVisibility.where}
             AND LOWER(TRIM(pessoa)) NOT IN (
               SELECT LOWER(TRIM(nome))
               FROM pessoa
@@ -378,10 +380,11 @@ export function createManageRepository() {
             )
           GROUP BY LOWER(TRIM(pessoa)), pessoa
           ORDER BY pessoa ASC
-        `
+        `,
+				...tVisibility.args
 			);
 
-			return [...(cadastradas ?? []), ...(pendentes ?? [])];
+			return [...(pendentes ?? []), ...(cadastradas ?? [])];
 		},
 
 		relinkTransacoesPessoaPendente: async (params: {

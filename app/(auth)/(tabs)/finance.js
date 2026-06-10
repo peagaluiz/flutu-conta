@@ -1,28 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshControl, ScrollView, useWindowDimensions } from "react-native";
+import { RefreshControl, ScrollView } from "react-native";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Box } from "@/components/ui/box";
-import { HStack } from "@/components/ui/hstack";
-import { Text } from "@/components/ui/text";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
-import {
-	Actionsheet,
-	ActionsheetBackdrop,
-	ActionsheetContent,
-	ActionsheetDragIndicator,
-	ActionsheetDragIndicatorWrapper,
-	ActionsheetItem,
-	ActionsheetItemText,
-} from "@/components/ui/actionsheet";
 import { useTheme } from "@/components/ui/gluestack-ui-provider/ThemeProvider/ThemeProvider";
 import { getThemeColors } from "@/constants/colors";
 import { useDatabase } from "@/hooks/useDatabase";
 import { useAuth } from "@/state/AuthContext";
 import { useFinanceDate } from "@/state/FinanceDateContext";
 import { useFinanceVisibilityScope } from "@/state/FinanceVisibilityScopeContext";
-import { formatCurrency, formatDate } from "@/utils/finance/helpers";
 import {
 	applyVisibilityScopeFilter,
+	buildBanksBreakdown,
 	buildCategoryExpenses,
 	buildResumoGeral,
 	finalizeResumo,
@@ -31,6 +21,8 @@ import {
 import { FinanceResumoSection } from "@/components/finance/dashboard/FinanceResumoSection";
 import { FinanceMonthlyChartSection } from "@/components/finance/dashboard/FinanceMonthlyChartSection";
 import { FinanceCategoryChartSection } from "@/components/finance/dashboard/FinanceCategoryChartSection";
+import { FinanceBanksChartSection } from "@/components/finance/dashboard/FinanceBanksChartSection";
+import { FinanceDetailSheet } from "@/components/finance/dashboard/FinanceDetailSheet";
 import { useSyncProgress } from "@/state/SyncProgressContext";
 
 function FinanceSkeleton() {
@@ -45,18 +37,20 @@ function FinanceSkeleton() {
 
 export default function Finance() {
 	const insets = useSafeAreaInsets();
-	const { height: screenHeight } = useWindowDimensions();
 	const { theme } = useTheme();
 	const colors = getThemeColors(theme);
 	const database = useDatabase();
 	const { userData, family } = useAuth();
 	const { dateRange, dateField } = useFinanceDate();
 
+	const router = useRouter();
 	const { startSync, endSync, updateStep } = useSyncProgress();
 	const { visibilityScope, setVisibilityScope } = useFinanceVisibilityScope();
 	const [loading, setLoading] = useState(true);
 	const [refreshing, setRefreshing] = useState(false);
 	const [items, setItems] = useState([]);
+	const [allItems, setAllItems] = useState([]);
+	const [banks, setBanks] = useState([]);
 	const [detailSheetOpen, setDetailSheetOpen] = useState(false);
 	const [detailTitle, setDetailTitle] = useState("Detalhes");
 	const [detailItems, setDetailItems] = useState([]);
@@ -81,13 +75,50 @@ export default function Finance() {
 		[scopedItems, activeFamilyId]
 	);
 
-	const resumo = useMemo(
-		() => finalizeResumo(buildResumoGeral(filteredItems)),
-		[filteredItems]
+	const allScopedItems = useMemo(
+		() =>
+			applyVisibilityScopeFilter(
+				allItems,
+				canUseFamilyScope ? visibilityScope : "mine",
+				activeFamilyId,
+				userData?.id || null
+			),
+		[activeFamilyId, allItems, canUseFamilyScope, userData?.id, visibilityScope]
 	);
+
+	const resumo = useMemo(() => {
+		const dateFromStr = dateRange.start ? String(dateRange.start).slice(0, 10) : null;
+		const dateToStr = dateRange.end ? String(dateRange.end).slice(0, 10) : null;
+		let saldoInicial = 0;
+		let pendentesTotal = 0;
+
+		allScopedItems.forEach((item) => {
+			const valor = Number(item?.valor || 0);
+			if (item.status !== "pago") {
+				if (dateToStr) {
+					const venc = item.data_vencimento ? String(item.data_vencimento).slice(0, 10) : null;
+					if (venc && venc > dateToStr) return;
+				}
+				pendentesTotal += 1;
+			} else if (dateFromStr) {
+				const baixa = item.data_baixa ? String(item.data_baixa).slice(0, 10) : null;
+				if (baixa && baixa < dateFromStr) {
+					if (item.tipo === "receber") saldoInicial += valor;
+					if (item.tipo === "pagar") saldoInicial -= valor;
+				}
+			}
+		});
+
+		const base = buildResumoGeral(filteredItems);
+		return { ...finalizeResumo(base, saldoInicial), pendentes: pendentesTotal };
+	}, [filteredItems, allScopedItems, dateRange.start, dateRange.end]);
 	const categorySeries = useMemo(
 		() => buildCategoryExpenses(filteredItems, 6),
 		[filteredItems]
+	);
+	const banksBreakdown = useMemo(
+		() => buildBanksBreakdown(filteredItems, banks),
+		[filteredItems, banks]
 	);
 
 	const openDetails = useCallback((title, rows) => {
@@ -96,23 +127,57 @@ export default function Finance() {
 		setDetailSheetOpen(true);
 	}, []);
 
+	const handleDetailItemPress = useCallback(
+		(item) => {
+			if (!item?.id_transacao) return;
+			setDetailSheetOpen(false);
+			router.push({
+				pathname: "/(auth)/(tabs)/launches",
+				params: {
+					highlightId: String(item.id_transacao),
+					highlightTs: String(Date.now()),
+				},
+			});
+		},
+		[router]
+	);
+
 	const loadData = useCallback(
 		async (silent = false) => {
 			try {
 				if (!silent) setLoading(true);
-				const data = await database.getTransacao(undefined, {
-					page: 1,
-					limit: 500,
-					dateFrom: dateRange.start,
-					dateTo: dateRange.end,
-					dateField: dateField ?? "data_vencimento",
-					visibilityScope: canUseFamilyScope ? visibilityScope : "mine",
-					userId: userData?.id ?? null,
-					familyId: activeFamilyId,
-				});
+				const effectiveScope = canUseFamilyScope ? visibilityScope : "mine";
+				const [data, allData, bancoData] = await Promise.all([
+					database.getTransacao(undefined, {
+						page: 1,
+						limit: 500,
+						dateFrom: dateRange.start,
+						dateTo: dateRange.end,
+						dateField: dateField ?? "data_vencimento",
+						visibilityScope: effectiveScope,
+						userId: userData?.id ?? null,
+						familyId: activeFamilyId,
+					}),
+					database.getTransacao(undefined, {
+						page: 1,
+						limit: 9999,
+						visibilityScope: effectiveScope,
+						userId: userData?.id ?? null,
+						familyId: activeFamilyId,
+					}),
+					database.listBancos({
+						visibilityScope: effectiveScope,
+						userId: userData?.id ?? null,
+						familyId: activeFamilyId,
+					}),
+				]);
 				setItems(Array.isArray(data) ? data : []);
+				setAllItems(Array.isArray(allData) ? allData : []);
+				setBanks(Array.isArray(bancoData) ? bancoData : []);
 			} catch {
 				setItems([]);
+				setAllItems([]);
+				setBanks([]);
 			} finally {
 				if (!silent) setLoading(false);
 			}
@@ -132,12 +197,6 @@ export default function Finance() {
 	useEffect(() => {
 		loadData(false);
 	}, [loadData]);
-
-	useEffect(() => {
-		if (!canUseFamilyScope && visibilityScope !== "mine") {
-			setVisibilityScope("mine");
-		}
-	}, [canUseFamilyScope, visibilityScope]);
 
 	const onRefresh = async () => {
 		setRefreshing(true);
@@ -193,14 +252,22 @@ export default function Finance() {
 										)
 									)
 								}
-								onPressPendentes={() =>
+								onPressPendentes={() => {
+									const dateToStr = dateRange.end ? String(dateRange.end).slice(0, 10) : null;
 									openDetails(
 										"Pendentes",
-										filteredItems.filter(
-											(item) => item.status !== "pago"
-										)
-									)
-								}
+										normalizeTransactions(allScopedItems, {
+											familyId: activeFamilyId,
+										}).filter((item) => {
+											if (item.status === "pago") return false;
+											if (dateToStr) {
+												const venc = item.data_vencimento ? String(item.data_vencimento).slice(0, 10) : null;
+												if (venc && venc > dateToStr) return false;
+											}
+											return true;
+										})
+									);
+								}}
 							/>
 							<FinanceMonthlyChartSection
 								items={filteredItems}
@@ -224,87 +291,24 @@ export default function Finance() {
 									)
 								}
 							/>
+							<FinanceBanksChartSection
+								banks={banksBreakdown}
+								colors={colors}
+								onPressDetail={openDetails}
+							/>
 						</>
 					)}
 				</Box>
 			</ScrollView>
 
-			<Actionsheet
+			<FinanceDetailSheet
 				isOpen={detailSheetOpen}
 				onClose={() => setDetailSheetOpen(false)}
-			>
-				<ActionsheetBackdrop />
-				<ActionsheetContent
-					style={{ paddingBottom: Math.max(insets.bottom, 12) + 8 }}
-				>
-					<ActionsheetDragIndicatorWrapper>
-						<ActionsheetDragIndicator />
-					</ActionsheetDragIndicatorWrapper>
-
-					<Box className="w-full px-2 pb-2">
-						<Text
-							className="text-base font-semibold"
-							style={{ color: colors.textPrimary }}
-						>
-							{detailTitle}
-						</Text>
-						<Text
-							className="text-xs"
-							style={{ color: colors.textSecondary }}
-						>
-							{detailItems.length} lançamento(s) no filtro atual
-						</Text>
-					</Box>
-
-					<ScrollView
-						style={{
-							width: "100%",
-							minHeight: screenHeight * 0.38,
-							maxHeight: screenHeight * 0.56,
-						}}
-						showsVerticalScrollIndicator={false}
-					>
-						{detailItems.length === 0 ? (
-							<ActionsheetItem isDisabled>
-								<ActionsheetItemText>
-									Sem itens para exibir.
-								</ActionsheetItemText>
-							</ActionsheetItem>
-						) : (
-							detailItems.slice(0, 80).map((item) => (
-								<ActionsheetItem key={`detail-${item.id_transacao}`}>
-									<Box className="w-full">
-										<HStack className="items-center justify-between">
-											<Text style={{ color: colors.textPrimary }}>
-												{item.categoria || "Sem categoria"}
-											</Text>
-											<Text
-												style={{
-													color:
-														item.tipo === "receber"
-															? "#16A34A"
-															: "#DC2626",
-												}}
-											>
-												{formatCurrency(
-													Number(item.valor || 0)
-												)}
-											</Text>
-										</HStack>
-										<Text
-											className="text-xs"
-											style={{ color: colors.textSecondary }}
-										>
-											{item.pessoa || "Sem pessoa"} •{" "}
-											{item.referenceDate ? formatDate(item.referenceDate) : "sem data"}
-										</Text>
-									</Box>
-								</ActionsheetItem>
-							))
-						)}
-					</ScrollView>
-				</ActionsheetContent>
-			</Actionsheet>
+				title={detailTitle}
+				items={detailItems}
+				colors={colors}
+				onItemPress={handleDetailItemPress}
+			/>
 		</>
 	);
 }

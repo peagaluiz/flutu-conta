@@ -1,4 +1,4 @@
-import { LogBox, Platform, StyleSheet, View } from "react-native";
+import { LogBox, Platform, View } from "react-native";
 import { PaperProvider } from "react-native-paper";
 import { registerTranslation, pt } from "react-native-paper-dates";
 
@@ -22,6 +22,8 @@ import AnimatedSplashScreen from "@/components/AnimatedSplashScreen";
 import Animated, { FadeOut } from "react-native-reanimated";
 import NavigationContext, { NavReadyStateContext } from "@/state/NavigationContext";
 import { SelectorOverlayProvider } from "@/state/SelectorOverlayContext";
+import { LoadingOverlayProvider } from "@/state/LoadingOverlayContext";
+import { SaveFeedbackProvider } from "@/state/SaveFeedbackContext";
 
 const StackGroup = () => {
 	return (
@@ -127,13 +129,15 @@ export default function RootLayout() {
 			<AuthProvider>
 				<ThemeProvider>
 					<View style={{ flex: 1 }}>
-						<ThemeBridge />
+						<LoadingOverlayProvider>
+							<SaveFeedbackProvider>
+								<ThemeBridge />
+							</SaveFeedbackProvider>
+						</LoadingOverlayProvider>
 						{showSplash && (
 							<Animated.View
-								style={[
-									StyleSheet.absoluteFill,
-									{ zIndex: 999, backgroundColor: "#FFFFFF" },
-								]}
+								className="absolute inset-0 z-[999]"
+								style={{ backgroundColor: "#FFFFFF" }}
 								exiting={FadeOut.duration(300)}
 							>
 								<AnimatedSplashScreen

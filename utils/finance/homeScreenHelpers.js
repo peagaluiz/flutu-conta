@@ -179,8 +179,12 @@ export function getFilterLabel(filterType) {
 	);
 }
 
-export function calculateResumo(lancamentosFiltrados = []) {
-	const valores = lancamentosFiltrados.reduce(
+export function calculateResumo(periodLancamentos = [], allLancamentos = null, dateFrom = null, dateTo = null) {
+	const all = Array.isArray(allLancamentos) ? allLancamentos : periodLancamentos;
+	const dateFromStr = dateFrom ? String(dateFrom).slice(0, 10) : null;
+	const dateToStr = dateTo ? String(dateTo).slice(0, 10) : null;
+
+	const periodValues = (Array.isArray(periodLancamentos) ? periodLancamentos : []).reduce(
 		(acc, item) => {
 			const valor = Number(item?.valor || 0);
 			const tipo = item?.tipo;
@@ -188,30 +192,52 @@ export function calculateResumo(lancamentosFiltrados = []) {
 
 			if (tipo === "receber") {
 				acc.totalEntradas += valor;
-				if (status !== "pago") acc.receberPendente += valor;
 				if (status === "pago") acc.entradasPagas += valor;
 			}
 
 			if (tipo === "pagar") {
 				acc.totalSaidas += valor;
-				if (status !== "pago") acc.dividasNaoPagas += valor;
 				if (status === "pago") acc.saidasPagas += valor;
 			}
 
 			return acc;
 		},
-		{
-			totalEntradas: 0,
-			totalSaidas: 0,
-			receberPendente: 0,
-			dividasNaoPagas: 0,
-			entradasPagas: 0,
-			saidasPagas: 0,
-		}
+		{ totalEntradas: 0, totalSaidas: 0, entradasPagas: 0, saidasPagas: 0 }
 	);
 
+	let saldoInicial = 0;
+	let receberPendente = 0;
+	let dividasNaoPagas = 0;
+
+	all.forEach((item) => {
+		const valor = Number(item?.valor || 0);
+		const tipo = item?.tipo;
+		const status = item?.status;
+
+		if (status !== "pago") {
+			if (dateToStr) {
+				const venc = item?.data_vencimento ? String(item.data_vencimento).slice(0, 10) : null;
+				if (venc && venc > dateToStr) return;
+			}
+			if (tipo === "receber") receberPendente += valor;
+			if (tipo === "pagar") dividasNaoPagas += valor;
+		} else if (dateFromStr) {
+			const baixa = item?.data_baixa ? String(item.data_baixa).slice(0, 10) : null;
+			if (baixa && baixa < dateFromStr) {
+				if (tipo === "receber") saldoInicial += valor;
+				if (tipo === "pagar") saldoInicial -= valor;
+			}
+		}
+	});
+
 	return {
-		saldo: valores.entradasPagas - valores.saidasPagas,
-		...valores,
+		saldo: saldoInicial + periodValues.entradasPagas - periodValues.saidasPagas,
+		saldoInicial,
+		totalEntradas: periodValues.totalEntradas,
+		totalSaidas: periodValues.totalSaidas,
+		receberPendente,
+		dividasNaoPagas,
+		entradasPagas: periodValues.entradasPagas,
+		saidasPagas: periodValues.saidasPagas,
 	};
 }

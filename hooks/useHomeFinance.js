@@ -28,6 +28,7 @@ export function useHomeFinance() {
 	const [loading, setLoading] = useState(true);
 	const [refreshing, setRefreshing] = useState(false);
 	const [lancamentos, setLancamentos] = useState([]);
+	const [allLancamentos, setAllLancamentos] = useState([]);
 	const [banks, setBanks] = useState([]);
 
 	const hasFamily = Number(family?.id || userData?.familyId || 0) > 0;
@@ -46,20 +47,33 @@ export function useHomeFinance() {
 		[activeFamilyId, dateField, dateRange.end, dateRange.start, effectiveScope, userData?.id]
 	);
 
+	const allQueryParams = useMemo(
+		() => ({
+			visibilityScope: effectiveScope,
+			userId: userData?.id ?? null,
+			familyId: activeFamilyId,
+			limit: 9999,
+			page: 1,
+		}),
+		[activeFamilyId, effectiveScope, userData?.id]
+	);
+
 	useEffect(() => {
 		let active = true;
 		setLoading(true);
 		Promise.all([
 			database.getTransacao(undefined, queryParams),
+			database.getTransacao(undefined, allQueryParams),
 			database.listBancos({
 				visibilityScope: effectiveScope,
 				userId: userData?.id ?? null,
 				familyId: activeFamilyId,
 			}),
 		])
-			.then(([data, bancoData]) => {
+			.then(([data, allData, bancoData]) => {
 				if (!active) return;
 				setLancamentos(Array.isArray(data) ? data : []);
+				setAllLancamentos(Array.isArray(allData) ? allData : []);
 				setBanks(Array.isArray(bancoData) ? bancoData : []);
 			})
 			.catch(() => {
@@ -71,15 +85,8 @@ export function useHomeFinance() {
 		return () => {
 			active = false;
 		};
-	}, [activeFamilyId, database, effectiveScope, queryParams, userData?.id]);
+	}, [activeFamilyId, allQueryParams, database, effectiveScope, queryParams, userData?.id]);
 
-	useEffect(() => {
-		if (!hasFamily && visibilityScope !== "mine") {
-			setVisibilityScope("mine");
-		}
-	}, [hasFamily, visibilityScope]);
-
-	// Recarrega quando o sync inicial (disparado pelo login) termina
 	useEffect(() => {
 		if (isSyncing) {
 			wasSyncingRef.current = true;
@@ -94,8 +101,9 @@ export function useHomeFinance() {
 		startSync("Sincronizando dados...");
 		try {
 			await database.syncAllPendingData({ force: true, onProgress: updateStep });
-			const [data, bancoData] = await Promise.all([
+			const [data, allData, bancoData] = await Promise.all([
 				database.getTransacao(undefined, queryParams),
+				database.getTransacao(undefined, allQueryParams),
 				database.listBancos({
 					visibilityScope: effectiveScope,
 					userId: userData?.id ?? null,
@@ -103,19 +111,20 @@ export function useHomeFinance() {
 				}),
 			]);
 			setLancamentos(Array.isArray(data) ? data : []);
+			setAllLancamentos(Array.isArray(allData) ? allData : []);
 			setBanks(Array.isArray(bancoData) ? bancoData : []);
 		} catch {
-			// silent refresh error
 		} finally {
 			setRefreshing(false);
 			endSync();
 		}
-	}, [activeFamilyId, database, effectiveScope, endSync, queryParams, startSync, updateStep, userData?.id]);
+	}, [activeFamilyId, allQueryParams, database, effectiveScope, endSync, queryParams, startSync, updateStep, userData?.id]);
 
 	const reload = useCallback(async () => {
 		try {
-			const [data, bancoData] = await Promise.all([
+			const [data, allData, bancoData] = await Promise.all([
 				database.getTransacao(undefined, queryParams),
+				database.getTransacao(undefined, allQueryParams),
 				database.listBancos({
 					visibilityScope: effectiveScope,
 					userId: userData?.id ?? null,
@@ -123,11 +132,11 @@ export function useHomeFinance() {
 				}),
 			]);
 			setLancamentos(Array.isArray(data) ? data : []);
+			setAllLancamentos(Array.isArray(allData) ? allData : []);
 			setBanks(Array.isArray(bancoData) ? bancoData : []);
 		} catch {
-			// silent reload error
 		}
-	}, [activeFamilyId, database, effectiveScope, queryParams, userData?.id]);
+	}, [activeFamilyId, allQueryParams, database, effectiveScope, queryParams, userData?.id]);
 
 	const handleDeleteItem = useCallback(
 		async (item) => {
@@ -196,7 +205,10 @@ export function useHomeFinance() {
 	const isFilterActive =
 		dateRange.start !== defaultRange.start || dateRange.end !== defaultRange.end;
 
-	const resumo = useMemo(() => calculateResumo(lancamentos), [lancamentos]);
+	const resumo = useMemo(
+		() => calculateResumo(lancamentos, allLancamentos, dateRange.start, dateRange.end),
+		[lancamentos, allLancamentos, dateRange.start, dateRange.end]
+	);
 
 	const banksResumo = useMemo(() => {
 		if (!banks.length) return [];

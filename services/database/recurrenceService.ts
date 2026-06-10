@@ -65,7 +65,6 @@ function getNextDueDate(currentDueDate: string, frequency: RecurrenceFrequency) 
 	return toISODate(addMonthsClamped(base, 1));
 }
 
-// Feriados nacionais fixos: [mês, dia]
 const BR_FIXED_HOLIDAYS: Array<[number, number]> = [
 	[1, 1], [4, 21], [5, 1], [9, 7], [10, 12], [11, 2], [11, 15], [12, 25],
 ];
@@ -91,11 +90,10 @@ function getEasterDate(year: number): Date {
 function isNonWorkingDay(isoDate: string): boolean {
 	const d = parseISODate(isoDate);
 	if (!d) return false;
-	if (d.getDay() === 0) return true; // domingo
+	if (d.getDay() === 0) return true;
 	const month = d.getMonth() + 1;
 	const day = d.getDate();
 	if (BR_FIXED_HOLIDAYS.some(([m, dd]) => m === month && dd === day)) return true;
-	// Sexta-feira Santa (Páscoa - 2 dias)
 	const goodFriday = addDays(getEasterDate(d.getFullYear()), -2);
 	if (toISODate(goodFriday) === isoDate) return true;
 	return false;
@@ -122,8 +120,8 @@ async function resolveVisibilityContext(params?: RecurrenceVisibilityParams) {
 		};
 	}
 
-	const { data } = await supabase.auth.getUser();
-	const user = data?.user;
+	const { data } = await supabase.auth.getSession();
+	const user = data?.session?.user;
 	const metadataFamilyId = Number(
 		(user?.user_metadata?.family_id as number | string | undefined) ??
 		(user?.app_metadata?.family_id as number | string | undefined) ??
@@ -187,7 +185,7 @@ function buildTemplatePayload(data: SeedTransacaoPayload) {
 	return {
 		tipo: data.tipo,
 		valor: data.valor,
-		categoria: data.categoria,
+		id_categoria: data.id_categoria ?? null,
 		id_pessoa: data.id_pessoa ?? null,
 		pessoa: data.pessoa ?? null,
 		id_imobilizado: data.id_imobilizado ?? null,
@@ -210,7 +208,7 @@ async function insertGeneratedTransacaoLocal(payload: SeedTransacaoPayload, dueD
         remote_id,
         tipo,
         valor,
-        categoria,
+        id_categoria,
         id_pessoa,
         pessoa,
         id_imobilizado,
@@ -233,7 +231,7 @@ async function insertGeneratedTransacaoLocal(payload: SeedTransacaoPayload, dueD
 		null,
 		template.tipo,
 		template.valor,
-		template.categoria,
+		template.id_categoria ?? null,
 		template.id_pessoa,
 		template.pessoa,
 		template.id_imobilizado,
@@ -457,7 +455,6 @@ async function _validateAndGeneratePendingRecurrences(options?: {
 					template = {};
 				}
 
-				// due_date nominal é o cursor; data_vencimento real pode ser ajustada
 				const actualDueDate = shouldSkip ? adjustForNonWorking(cursor, skipDir) : cursor;
 
 				const insertedId = await insertGeneratedTransacaoLocal(
@@ -465,7 +462,7 @@ async function _validateAndGeneratePendingRecurrences(options?: {
 						remote_id: null,
 						tipo: template.tipo ?? "pagar",
 						valor: Number(template.valor || 0),
-						categoria: template.categoria ?? "Outros",
+						id_categoria: template.id_categoria ?? null,
 						id_pessoa: template.id_pessoa ?? null,
 						pessoa: template.pessoa ?? null,
 						id_imobilizado: template.id_imobilizado ?? null,

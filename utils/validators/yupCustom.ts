@@ -14,7 +14,7 @@ export const brNumber = (label = 'Campo') =>
         .test('is-valid-br-number', `${label} em formato inválido`, function (value) {
             const original = this.originalValue;
             if (typeof original === 'string' && original.trim() !== '') {
-                return /^\d{1,3}(\.\d{3})*,\d{2}$/.test(original);
+                return /^(\d{1,3}(\.\d{3})+|\d+)(,\d{1,2})?$/.test(original);
             }
             return true;
         })

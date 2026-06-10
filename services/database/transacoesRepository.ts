@@ -33,8 +33,8 @@ async function resolveVisibilityContext(params?: {
 		};
 	}
 
-	const { data } = await supabase.auth.getUser();
-	const user = data?.user;
+	const { data } = await supabase.auth.getSession();
+	const user = data?.session?.user;
 
 	const metadataFamilyId = Number(
 		(user?.user_metadata?.family_id as number | string | undefined) ??
@@ -130,7 +130,7 @@ async function insertTransacaoLocal(
         remote_id,
         tipo,
         valor,
-        categoria,
+        id_categoria,
         id_pessoa,
         pessoa,
         id_imobilizado,
@@ -155,7 +155,7 @@ async function insertTransacaoLocal(
 		null,
 		data.tipo,
 		data.valor,
-		data.categoria,
+		data.id_categoria ?? null,
 		data.id_pessoa ?? null,
 		data.pessoa ?? null,
 		data.id_imobilizado ?? null,
@@ -185,10 +185,14 @@ export function createTransacoesRepository() {
 		createTransacao: async (
 			data: Omit<TransacaoDatabase, "id_transacao" | "created_at" | "updated_at">
 		) => {
-			const visibility = await resolveVisibilityContext();
+			let resolvedUserId = data.user_id ?? null;
+			if (!resolvedUserId) {
+				const visibility = await resolveVisibilityContext();
+				resolvedUserId = visibility.userId ?? null;
+			}
 			const payload = {
 				...data,
-				user_id: data.user_id ?? visibility.userId ?? null,
+				user_id: resolvedUserId,
 			};
 
 			if (Platform.OS === "web") {
@@ -223,7 +227,11 @@ export function createTransacoesRepository() {
 				throw new Error("Recorrencia disponivel somente no banco local no app movel");
 			}
 
-			const visibility = await resolveVisibilityContext();
+			let resolvedUserId = data.user_id ?? null;
+			if (!resolvedUserId) {
+				const visibility = await resolveVisibilityContext();
+				resolvedUserId = visibility.userId ?? null;
+			}
 			const dueDate =
 				(data.data_vencimento && /^\d{4}-\d{2}-\d{2}$/.test(String(data.data_vencimento))
 					? String(data.data_vencimento)
@@ -231,7 +239,7 @@ export function createTransacoesRepository() {
 
 			const seedPayload = {
 				...data,
-				user_id: data.user_id ?? visibility.userId ?? null,
+				user_id: resolvedUserId,
 				data_vencimento: dueDate,
 				data_transacao: data.data_transacao ?? nowISO(),
 			};
@@ -274,7 +282,7 @@ export function createTransacoesRepository() {
           UPDATE transacoes
           SET tipo = COALESCE(?, tipo),
               valor = COALESCE(?, valor),
-              categoria = COALESCE(?, categoria),
+              id_categoria = ?,
               id_pessoa = ?,
               pessoa = ?,
               id_imobilizado = ?,
@@ -295,7 +303,7 @@ export function createTransacoesRepository() {
         `,
 				data.tipo ?? null,
 				data.valor ?? null,
-				data.categoria ?? null,
+				data.id_categoria ?? null,
 				data.id_pessoa ?? null,
 				data.pessoa ?? null,
 				data.id_imobilizado ?? null,
@@ -429,12 +437,15 @@ export function createTransacoesRepository() {
 					`
 					SELECT
 						t.*,
+						cc.nome AS categoria,
 						COALESCE(p.nome, t.pessoa) AS pessoa,
 						CASE WHEN rt.id_recurrencia IS NULL THEN 0 ELSE 1 END AS is_from_recurrence,
 						r.uuid AS recurrence_uuid,
 						r.frequency AS recurrence_frequency,
 						rt.sequence AS recurrence_sequence
 					FROM transacoes t
+					LEFT JOIN categoria_catalogo cc
+						ON cc.id = t.id_categoria
 					LEFT JOIN pessoa p
 						ON p.id_pessoa = t.id_pessoa
 						AND p.deleted = 0
@@ -477,12 +488,15 @@ export function createTransacoesRepository() {
 				`
 				SELECT
 					t.*,
+					cc.nome AS categoria,
 					COALESCE(p.nome, t.pessoa) AS pessoa,
 					CASE WHEN rt.id_recurrencia IS NULL THEN 0 ELSE 1 END AS is_from_recurrence,
 					r.uuid AS recurrence_uuid,
 					r.frequency AS recurrence_frequency,
 					rt.sequence AS recurrence_sequence
 				FROM transacoes t
+				LEFT JOIN categoria_catalogo cc
+					ON cc.id = t.id_categoria
 				LEFT JOIN pessoa p
 					ON p.id_pessoa = t.id_pessoa
 					AND p.deleted = 0
@@ -495,7 +509,10 @@ export function createTransacoesRepository() {
 				  AND ${localVisibility.where}
 				  ${params?.dateFrom ? `AND substr(${params?.dateField === "data_baixa" ? "t.data_baixa" : "COALESCE(t.data_vencimento, t.data_transacao)"}, 1, 10) >= ?` : ""}
 				  ${params?.dateTo ? `AND substr(${params?.dateField === "data_baixa" ? "t.data_baixa" : "COALESCE(t.data_vencimento, t.data_transacao)"}, 1, 10) <= ?` : ""}
-				ORDER BY t.id_transacao DESC
+				ORDER BY
+					CASE WHEN t.data_baixa IS NULL OR t.data_baixa = '' THEN 0 ELSE 1 END ASC,
+					COALESCE(t.data_vencimento, t.data_transacao) ASC,
+					t.id_transacao DESC
 				LIMIT ? OFFSET ?
 			`,
 				...localVisibility.args,

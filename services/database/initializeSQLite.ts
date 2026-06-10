@@ -80,7 +80,6 @@ export async function initializeSQLite(database: SQLiteDatabase) {
 			remote_id        INTEGER,
 			tipo             TEXT NOT NULL,
 			valor            REAL NOT NULL,
-			categoria        TEXT NOT NULL,
 			id_pessoa        INTEGER,
 			pessoa           TEXT,
 			id_imobilizado   INTEGER,
@@ -157,6 +156,18 @@ export async function initializeSQLite(database: SQLiteDatabase) {
 		);
 	`);
 
+	await database.execAsync(`
+		CREATE TABLE IF NOT EXISTS categoria_catalogo (
+			id       INTEGER PRIMARY KEY,
+			nome     TEXT    NOT NULL,
+			icone    TEXT,
+			cor_hex  TEXT    NOT NULL DEFAULT '#6B7280',
+			ordem    INTEGER NOT NULL DEFAULT 0,
+			ativo    INTEGER NOT NULL DEFAULT 1,
+			cached_at TEXT   NOT NULL
+		);
+	`);
+
 	// Migrações para bases já existentes — sempre antes dos CREATE INDEX
 	const safeAddColumn = async (sql: string) => {
 		try {
@@ -173,6 +184,17 @@ export async function initializeSQLite(database: SQLiteDatabase) {
 	await safeAddColumn("ALTER TABLE transacoes ADD COLUMN user_id TEXT;");
 	await safeAddColumn("ALTER TABLE transacoes ADD COLUMN id_banco INTEGER;");
 	await safeAddColumn("ALTER TABLE transacoes ADD COLUMN data_baixa TEXT;");
+	await safeAddColumn("ALTER TABLE transacoes ADD COLUMN id_categoria INTEGER;");
+
+	// Remove coluna legada — SQLite 3.35+ suporta DROP COLUMN (expo-sqlite v15+)
+	const safeDropColumn = async (sql: string) => {
+		try {
+			await database.execAsync(sql);
+		} catch {
+			// Ignora quando coluna já foi removida ou não existe
+		}
+	};
+	await safeDropColumn("ALTER TABLE transacoes DROP COLUMN categoria;");
 
 	await safeAddColumn("ALTER TABLE pessoa ADD COLUMN family_id INTEGER;");
 	await safeAddColumn("ALTER TABLE pessoa ADD COLUMN is_family_shared INTEGER DEFAULT 0;");
@@ -208,4 +230,5 @@ export async function initializeSQLite(database: SQLiteDatabase) {
 	await database.execAsync("CREATE INDEX IF NOT EXISTS idx_recorrencias_status_due   ON recorrencias(status, next_due_date);");
 	await database.execAsync("CREATE INDEX IF NOT EXISTS idx_recorrencias_visibility   ON recorrencias(user_id, family_id);");
 	await database.execAsync("CREATE INDEX IF NOT EXISTS idx_recorrencia_transacoes_fk ON recorrencia_transacoes(id_recurrencia);");
+	await database.execAsync("CREATE INDEX IF NOT EXISTS idx_transacoes_id_categoria   ON transacoes(id_categoria);");
 }

@@ -27,7 +27,6 @@ function TabsContent() {
 
 	useEffect(() => {
 		if (!isNavReady) return;
-		// isNavReady = true quando showSplash vira false; FadeOut leva 300ms
 		const timeout = setTimeout(() => {
 			Animated.spring(tabBarTranslate, {
 				toValue: 0,

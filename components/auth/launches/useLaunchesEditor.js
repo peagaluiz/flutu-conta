@@ -74,7 +74,7 @@ export function useLaunchesEditor({
 
 	const openCreate = useCallback(() => {
 		if (section === "transacoes" || section === "recorrencias") {
-			router.push("/(auth)/(stack)/insert");
+			router.push({ pathname: "/(auth)/(stack)/insert", params: { from: "launches" } });
 			return;
 		}
 		if (section === "bancos") {
@@ -94,9 +94,9 @@ export function useLaunchesEditor({
 		(item) => {
 			const itemType = getItemType(item);
 			if (itemType === "transacoes") {
-				router.replace({
+				router.push({
 					pathname: "/(auth)/(stack)/insert",
-					params: { id_transacao: String(item.id_transacao) },
+					params: { id_transacao: String(item.id_transacao), from: "launches" },
 				});
 				return;
 			}

@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { useDatabase } from "@/hooks/useDatabase";
 import { useErrorToast } from "@/components/ui/toast/useErrorToast";
+import { useSaveFeedback } from "@/state/SaveFeedbackContext";
 import { useAuth } from "@/state/AuthContext";
 import {
 	insertSchema,
@@ -18,6 +19,7 @@ export function useInsertForm() {
 	const navigation = useNavigation();
 	const params = useLocalSearchParams();
 	const { showNewToast } = useErrorToast();
+	const { startSaving, showSuccess, showError } = useSaveFeedback();
 	const { userData, family } = useAuth();
 	const {
 		createTransacao,
@@ -28,6 +30,7 @@ export function useInsertForm() {
 		listBancos,
 		createBanco,
 		listCatalog,
+		listCategories,
 	} = useDatabase();
 
 	const [isSaving, setIsSaving] = useState(false);
@@ -38,6 +41,7 @@ export function useInsertForm() {
 	const [isFromRecurrence, setIsFromRecurrence] = useState(false);
 	const [recurrenceMeta, setRecurrenceMeta] = useState(null);
 	const [selectedCatalogBanco, setSelectedCatalogBanco] = useState(null);
+	const [categories, setCategories] = useState([]);
 
 	const editId = useMemo(() => {
 		const raw = Array.isArray(params?.id_transacao)
@@ -46,6 +50,11 @@ export function useInsertForm() {
 		const n = Number(raw);
 		return raw && !Number.isNaN(n) ? n : null;
 	}, [params?.id_transacao]);
+
+	const fromParam = useMemo(() => {
+		const v = Array.isArray(params?.from) ? params.from[0] : params?.from;
+		return v === "launches" ? "launches" : null;
+	}, [params?.from]);
 
 	const tipoParam = useMemo(() => {
 		const v = Array.isArray(params?.tipo) ? params.tipo[0] : params?.tipo;
@@ -105,6 +114,10 @@ export function useInsertForm() {
 	}, []);
 
 	useEffect(() => {
+		listCategories().then(setCategories).catch(() => {});
+	}, []);
+
+	useEffect(() => {
 		if (!editId) {
 			setIsFromRecurrence(false);
 			setRecurrenceMeta(null);
@@ -113,7 +126,12 @@ export function useInsertForm() {
 		async function load() {
 			try {
 				setIsLoading(true);
-				const t = await getTransacao(editId, { fallbackRemoteOnMiss: true });
+				const t = await getTransacao(editId, {
+					fallbackRemoteOnMiss: true,
+					userId: userData?.id ?? undefined,
+					familyId: family?.id ? Number(family.id) : null,
+					visibilityScope: "all",
+				});
 				if (!t) {
 					showNewToast("warning", "Lançamento não encontrado.", "Atenção");
 					router.replace("/");
@@ -189,9 +207,13 @@ export function useInsertForm() {
 			const type = event?.data?.action?.type;
 			if (type !== "GO_BACK" && type !== "POP" && type !== "POP_TO_TOP") return;
 			event.preventDefault();
-			router.replace("/");
+			if (fromParam === "launches") {
+				router.replace("/(auth)/(tabs)/launches");
+			} else {
+				router.replace("/");
+			}
 		});
-	}, [navigation, router]);
+	}, [navigation, router, fromParam]);
 
 	const handleBancoSelect = (catalogItem) => {
 		if (!catalogItem) {
@@ -200,12 +222,12 @@ export function useInsertForm() {
 			return;
 		}
 		setSelectedCatalogBanco(catalogItem);
-		// id_banco é resolvido em handleSave para evitar criar banco sem salvar
 	};
 
 	const handleSave = async (data) => {
+		startSaving();
+		setIsSaving(true);
 		try {
-			setIsSaving(true);
 			const typedPessoa = String(data.pessoa || "").trim();
 			const foundPessoa = typedPessoa ? await findPessoaByName(typedPessoa) : null;
 
@@ -220,10 +242,13 @@ export function useInsertForm() {
 					: (await createBanco(selectedCatalogBanco.nome, selectedCatalogBanco.cor_hex ?? "#6B7280", { userId: userData?.id ?? null })).id_banco;
 			}
 
+			// Resolve id_categoria a partir do nome selecionado no form
+			const id_categoria = categories.find((c) => c.nome === data.categoria)?.id ?? null;
+
 			const payload = {
 				tipo: data.tipo,
 				valor: parseBrNumber(data.valor),
-				categoria: data.categoria,
+				id_categoria,
 				id_pessoa: foundPessoa?.id_pessoa ?? null,
 				pessoa: foundPessoa?.nome || typedPessoa || null,
 				id_imobilizado: null,
@@ -240,9 +265,12 @@ export function useInsertForm() {
 				json: JSON.stringify({ descricao: data.descricao || null }),
 			};
 
+			let savedId = null;
+			let successMessage = "Lançamento salvo!";
 			if (editId) {
 				await updateTransacao(editId, payload);
-				showNewToast("success", "Transação atualizada com sucesso.", "Sucesso");
+				savedId = editId;
+				successMessage = "Lançamento atualizado!";
 			} else if (data.recurrence_mode === "recorrente") {
 				const result = await createRecurringTransacoes(payload, {
 					frequency: data.recurrence_frequency,
@@ -252,21 +280,32 @@ export function useInsertForm() {
 						? (data.recurrence_skip_direction || null)
 						: null,
 				});
-				showNewToast(
-					"success",
-					`${result.created} lançamentos recorrentes criados com sucesso.`,
-					"Sucesso"
-				);
+				savedId = result?.ids?.[0] ?? null;
+				successMessage = "Recorrência criada!";
 			} else {
-				await createTransacao(payload);
-				showNewToast("success", "Transação salva com sucesso.", "Sucesso");
+				const result = await createTransacao(payload);
+				savedId = result?.insertId ?? null;
+				successMessage = "Lançamento salvo!";
 			}
 
-			reset();
-			router.replace("/");
+			await showSuccess(successMessage);
+			if (fromParam === "launches") {
+				router.replace(
+					savedId
+						? {
+								pathname: "/(auth)/(tabs)/launches",
+								params: {
+									highlightId: String(savedId),
+									highlightTs: String(Date.now()),
+								},
+							}
+						: "/(auth)/(tabs)/launches"
+				);
+			} else {
+				router.replace("/");
+			}
 		} catch (error) {
-			showNewToast("error", String(error || "Falha ao salvar transação"), "Erro");
-		} finally {
+			showError(String(error || "Não foi possível salvar o lançamento."));
 			setIsSaving(false);
 		}
 	};
@@ -284,9 +323,10 @@ export function useInsertForm() {
 		showRecurrenceEndPicker,
 		setShowRecurrenceEndPicker,
 		handleSave,
-		handleBack: () => router.replace("/"),
+		handleBack: () => fromParam === "launches" ? router.replace("/(auth)/(tabs)/launches") : router.replace("/"),
 		family,
 		selectedCatalogBanco,
 		handleBancoSelect,
+		categories,
 	};
 }

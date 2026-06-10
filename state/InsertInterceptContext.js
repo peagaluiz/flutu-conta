@@ -5,15 +5,22 @@ const InsertInterceptContext = createContext(null);
 
 export function InsertInterceptProvider({ children }) {
 	const [isOpen, setIsOpen] = useState(false);
+	const [interceptFrom, setInterceptFrom] = useState(null);
 	const router = useRouter();
 
-	const openIntercept = useCallback(() => setIsOpen(true), []);
+	const openIntercept = useCallback((from = null) => {
+		setInterceptFrom(from);
+		setIsOpen(true);
+	}, []);
 	const closeIntercept = useCallback(() => setIsOpen(false), []);
 
 	const handleNova = useCallback(() => {
 		setIsOpen(false);
-		router.push("/(auth)/(stack)/insert");
-	}, [router]);
+		router.push({
+			pathname: "/(auth)/(stack)/insert",
+			params: interceptFrom ? { from: interceptFrom } : {},
+		});
+	}, [router, interceptFrom]);
 
 	const handleImportar = useCallback(() => {
 		setIsOpen(false);

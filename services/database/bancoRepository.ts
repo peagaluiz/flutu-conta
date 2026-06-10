@@ -29,8 +29,8 @@ async function resolveVisibilityContext(params?: VisibilityParams) {
 		};
 	}
 
-	const { data } = await supabase.auth.getUser();
-	const user = data?.user;
+	const { data } = await supabase.auth.getSession();
+	const user = data?.session?.user;
 	const metadataFamilyId = Number(
 		(user?.user_metadata?.family_id as number | string | undefined) ??
 		(user?.app_metadata?.family_id as number | string | undefined) ??

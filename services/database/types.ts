@@ -3,7 +3,8 @@ export type TransacaoDatabase = {
 	remote_id?: number | null;
 	tipo: "pagar" | "receber";
 	valor: number;
-	categoria: string;
+	id_categoria?: number | null;
+	categoria?: string | null;  // alias de JOIN (cc.nome AS categoria) — não existe como coluna física
 	id_pessoa: number | null;
 	pessoa: string | null;
 	id_imobilizado: number | null;

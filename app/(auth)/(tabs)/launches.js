@@ -1,8 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, RefreshControl } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/state/AuthContext";
 import { useInsertIntercept } from "@/state/InsertInterceptContext";
+import { useFinanceDate } from "@/state/FinanceDateContext";
 
 import { useTheme } from "@/components/ui/gluestack-ui-provider/ThemeProvider/ThemeProvider";
 import { getThemeColors } from "@/constants/colors";
@@ -28,6 +30,7 @@ import LaunchesEditorModal from "@/components/auth/launches/LaunchesEditorModal"
 import BancoCatalogoSheet from "@/components/auth/launches/BancoCatalogoSheet";
 import { LaunchesBulkActions } from "@/components/auth/launches/LaunchesBulkActions";
 import { BaixaDateModal } from "@/components/auth/launches/BaixaDateModal";
+import { LaunchesFilterModal } from "@/components/auth/launches/LaunchesFilterModal";
 
 const ItemSeparator = () => <Box style={{ height: 10 }} />;
 
@@ -39,12 +42,47 @@ export default function Launches() {
 	const { family, userData } = useAuth();
 
 	const { openIntercept } = useInsertIntercept();
+	const { highlightId: highlightParam, highlightTs: highlightTsParam } = useLocalSearchParams();
+
+	const [localHighlightId, setLocalHighlightId] = useState(null);
+	const scrolledForHighlightRef = useRef(null);
+
+	const { dateRange: finDateRange, dateField: finDateField } = useFinanceDate();
+	const [activeFilters, setActiveFilters] = useState(() => ({
+		searchText: "",
+		dateFrom: finDateRange?.start ?? null,
+		dateTo: finDateRange?.end ?? null,
+		dateField: finDateField ?? "data_vencimento",
+	}));
+
+	useEffect(() => {
+		if (!highlightParam || !highlightTsParam) return;
+		const id = Number(highlightParam);
+		setLocalHighlightId(id);
+		scrolledForHighlightRef.current = null;
+		setActiveFilters((prev) => ({
+			...prev,
+			searchText: "",
+			dateFrom: null,
+			dateTo: null,
+		}));
+		const timer = setTimeout(() => setLocalHighlightId(null), 3000);
+		return () => clearTimeout(timer);
+	}, [highlightParam, highlightTsParam]);
+	const [filterOpen, setFilterOpen] = useState(false);
+	const filterActive = !!(activeFilters.searchText || activeFilters.dateFrom);
+
 	const [section, setSection] = useState("transacoes");
 	const config = useMemo(() => getSectionConfig(section), [section]);
 
+	const flatListRef = useRef(null);
 	const [selectedIds, setSelectedIds] = useState(new Set());
 	const [baixaDateModalOpen, setBaixaDateModalOpen] = useState(false);
 	const selectionMode = selectedIds.size > 0;
+
+	useEffect(() => {
+		if (localHighlightId) setSection("transacoes");
+	}, [localHighlightId]);
 
 	useEffect(() => {
 		setSelectedIds(new Set());
@@ -65,7 +103,7 @@ export default function Launches() {
 		darBaixaBulk,
 		removerBaixaBulk,
 		deleteItemsBulk,
-	} = useLaunchesData({ database, section, family, userData });
+	} = useLaunchesData({ database, section, family, userData, filters: activeFilters });
 
 	const {
 		editorOpen,
@@ -94,6 +132,22 @@ export default function Launches() {
 		() => validItems.filter((item) => selectedIds.has(item.id_transacao)),
 		[validItems, selectedIds]
 	);
+
+	useEffect(() => {
+		if (!localHighlightId || !validItems.length) return;
+		if (scrolledForHighlightRef.current === localHighlightId) return;
+		const idx = validItems.findIndex((item) => item.id_transacao === localHighlightId);
+		if (idx < 0) return;
+		const timer = setTimeout(() => {
+			scrolledForHighlightRef.current = localHighlightId;
+			flatListRef.current?.scrollToIndex({
+				index: idx,
+				animated: true,
+				viewPosition: 0.4,
+			});
+		}, 400);
+		return () => clearTimeout(timer);
+	}, [localHighlightId, validItems]);
 
 	const handleLongPress = useCallback(
 		(item) => {
@@ -137,7 +191,7 @@ export default function Launches() {
 
 	const handleCreate = useCallback(() => {
 		if (section === "transacoes") {
-			openIntercept();
+			openIntercept("launches");
 		} else {
 			openCreate();
 		}
@@ -171,6 +225,7 @@ export default function Launches() {
 						selectionMode={selectionMode}
 						onLongPress={() => handleLongPress(item)}
 						onToggleSelect={() => handleToggleSelect(item)}
+						isHighlighted={localHighlightId === item.id_transacao}
 					/>
 				);
 			}
@@ -236,6 +291,7 @@ export default function Launches() {
 			selectionMode,
 			handleLongPress,
 			handleToggleSelect,
+			localHighlightId,
 		]
 	);
 
@@ -248,6 +304,8 @@ export default function Launches() {
 					config={config}
 					colors={colors}
 					onCreate={handleCreate}
+					onFilter={() => setFilterOpen(true)}
+					filterActive={filterActive}
 				/>
 				{selectionMode && section === "transacoes" && (
 					<LaunchesBulkActions
@@ -273,12 +331,14 @@ export default function Launches() {
 			handleBulkDelete,
 			handleBulkRemoverBaixa,
 			clearSelection,
+			filterActive,
 		]
 	);
 
 	return (
 		<Box style={{ flex: 1, backgroundColor: colors.screen }}>
 			<FlatList
+				ref={flatListRef}
 				contentContainerStyle={contentStyle}
 				refreshControl={
 					<RefreshControl
@@ -301,6 +361,12 @@ export default function Launches() {
 				}
 				onEndReached={handleLoadMore}
 				onEndReachedThreshold={0.4}
+				onScrollToIndexFailed={({ index }) => {
+					flatListRef.current?.scrollToOffset({
+						offset: index * 90,
+						animated: true,
+					});
+				}}
 			/>
 
 			<LaunchesEditorModal
@@ -338,6 +404,14 @@ export default function Launches() {
 				isOpen={baixaDateModalOpen}
 				onClose={() => setBaixaDateModalOpen(false)}
 				onApply={handleBulkDarBaixa}
+			/>
+
+			<LaunchesFilterModal
+				isOpen={filterOpen}
+				onClose={() => setFilterOpen(false)}
+				onApply={setActiveFilters}
+				initialFilters={activeFilters}
+				colors={colors}
 			/>
 		</Box>
 	);

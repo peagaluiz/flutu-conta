@@ -1,6 +1,6 @@
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { View } from "react-native";
 import { useTheme } from "@/components/ui/gluestack-ui-provider/ThemeProvider/ThemeProvider";
 import { useAuth } from "@/state/AuthContext";
 import { Redirect, Stack } from "expo-router";
@@ -49,9 +49,9 @@ function StackLayoutInner() {
 			.catch(() => {})
 			.finally(() => endSync());
 		database.fetchAndCacheCatalog().catch(() => {});
+		database.fetchAndCacheCategories().catch(() => {});
 	}, [database, endSync, isLoggedIn, isReady, startSync, updateStep]);
 
-	// Caso não logado: sinaliza navReady imediatamente para a splash desaparecer
 	useEffect(() => {
 		if (isReady && !isLoggedIn && !navReadySignaledRef.current) {
 			navReadySignaledRef.current = true;
@@ -59,7 +59,6 @@ function StackLayoutInner() {
 		}
 	}, [isReady, isLoggedIn, signalNavReady]);
 
-	// Caso logado: fade do loader e depois sinaliza navReady
 	useEffect(() => {
 		if (isReady && isLoggedIn && showLoader) {
 			loaderOpacity.value = withTiming(
@@ -100,15 +99,10 @@ function StackLayoutInner() {
 
 			{showLoader && (
 				<Animated.View
+					className="absolute inset-0 z-[998] justify-center items-center"
 					style={[
 						loaderStyle,
-						StyleSheet.absoluteFill,
-						{
-							zIndex: 998,
-							backgroundColor: isDarkMode ? "#020617" : "#FFFFFF",
-							justifyContent: "center",
-							alignItems: "center",
-						},
+						{ backgroundColor: isDarkMode ? "#020617" : "#FFFFFF" },
 					]}
 				>
 					<Loader className="mb-[64px]" />

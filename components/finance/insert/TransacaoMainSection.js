@@ -20,6 +20,7 @@ import { SearchableSelectPessoas } from "@/components/finance/insert/SearchableS
 import { FormRadioGroup } from "@/components/ui/radio-button/FormRadioGroup";
 import { MaskedFormInput } from "@/components/ui/input/MaskedFormInput";
 import { Landmark, Tag, CalendarDays, ChevronDown, X } from "lucide-react-native";
+import * as LucideIcons from "lucide-react-native";
 
 export function TransacaoMainSection({
     isDarkMode,
@@ -28,7 +29,7 @@ export function TransacaoMainSection({
     control,
     errors,
     decimalMask,
-    categorias,
+    categories = [],
     actionSheetContentStyle,
     dataVencimento,
     showDatePicker,
@@ -45,7 +46,21 @@ export function TransacaoMainSection({
     const inputContainerStyle = { borderColor: inputBorderColor, backgroundColor: inputBackgroundColor };
 
     const status = useWatch({ control, name: "status" });
+    const categoriaValue = useWatch({ control, name: "categoria" });
     const [showDataBaixaPicker, setShowDataBaixaPicker] = useState(false);
+
+    // Lookup dinâmico do ícone Lucide da categoria selecionada, com fallback para Tag
+    const CategoriaIcon = useMemo(() => {
+        const cat = categories.find((c) => c.nome === categoriaValue);
+        if (cat?.icone && LucideIcons[cat.icone]) return LucideIcons[cat.icone];
+        return Tag;
+    }, [categories, categoriaValue]);
+
+    // Normaliza categories para o formato aceito pelo SearchableSelect
+    const categoryOptions = useMemo(
+        () => categories.map((c) => ({ id: c.nome, label: c.nome })),
+        [categories]
+    );
 
     return (
         <Grid
@@ -159,10 +174,10 @@ export function TransacaoMainSection({
                             value={value}
                             onChange={onChange}
                             error={errors.categoria}
-                            options={categorias}
+                            options={categoryOptions}
                             placeholder="Selecionar categoria"
                             searchPlaceholder="Pesquisar categoria..."
-                            Icon={Tag}
+                            Icon={CategoriaIcon}
                             isRequired={true}
                             inputContainerStyle={inputContainerStyle}
                             actionSheetContentStyle={actionSheetContentStyle}

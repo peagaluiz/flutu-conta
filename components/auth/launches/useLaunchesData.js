@@ -7,7 +7,7 @@ import { useSyncProgress } from "@/state/SyncProgressContext";
 
 const PAGE_SIZE = 30;
 
-export function useLaunchesData({ database, section, family, userData }) {
+export function useLaunchesData({ database, section, family, userData, filters = {} }) {
 	const { startSync, endSync, updateStep } = useSyncProgress();
 	const [items, setItems] = useState([]);
 	const [loading, setLoading] = useState(true);
@@ -17,6 +17,7 @@ export function useLaunchesData({ database, section, family, userData }) {
 	const [loadingMore, setLoadingMore] = useState(false);
 
 	const loadRef = useRef(0);
+	const prevSectionRef = useRef(null);
 
 	const visibilityArgs = useMemo(
 		() => ({
@@ -45,10 +46,17 @@ export function useLaunchesData({ database, section, family, userData }) {
 						setHasMore(true);
 					}
 
+					const dateOptions = {
+						dateFrom: filters.dateFrom ?? undefined,
+						dateTo: filters.dateTo ?? undefined,
+						dateField: filters.dateField ?? undefined,
+					};
+
 					const rows = await loadSectionData(database, sectionTarget, {
 						page: pageToLoad,
 						limit: PAGE_SIZE,
 						...visibilityArgs,
+						...dateOptions,
 					});
 
 					if (id === loadRef.current) {
@@ -82,14 +90,17 @@ export function useLaunchesData({ database, section, family, userData }) {
 				if (append && id === loadRef.current) setLoadingMore(false);
 			}
 		},
-		[database, section, visibilityArgs]
+		[database, section, visibilityArgs, filters]
 	);
 
 	useEffect(() => {
+		const isFirstLoad = prevSectionRef.current === null;
+		const sectionChanged = !isFirstLoad && prevSectionRef.current !== section;
+		prevSectionRef.current = section;
 		setPage(1);
 		setHasMore(true);
 		setLoadingMore(false);
-		loadData(section);
+		loadData(section, { silent: !isFirstLoad && !sectionChanged });
 	}, [section, loadData]);
 
 	const onRefresh = useCallback(async () => {
@@ -101,7 +112,6 @@ export function useLaunchesData({ database, section, family, userData }) {
 			setHasMore(true);
 			await loadData(section, { silent: true, page: 1 });
 		} catch {
-			// mantém a tela responsiva
 		} finally {
 			setRefreshing(false);
 			endSync();
@@ -231,10 +241,17 @@ export function useLaunchesData({ database, section, family, userData }) {
 		[database, loadData, section]
 	);
 
-	const validItems = useMemo(
-		() => filterValidItems(items, section),
-		[items, section]
-	);
+	const validItems = useMemo(() => {
+		const base = filterValidItems(items, section);
+		const q = (filters.searchText || "").toLowerCase().trim();
+		if (!q || section !== "transacoes") return base;
+		return base.filter(
+			(item) =>
+				String(item.categoria || "").toLowerCase().includes(q) ||
+				String(item.pessoa || "").toLowerCase().includes(q) ||
+				String(item.observacao || "").toLowerCase().includes(q)
+		);
+	}, [items, section, filters.searchText]);
 
 	return {
 		validItems,

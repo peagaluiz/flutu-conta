@@ -1,13 +1,16 @@
-import { Stack, useRouter } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Pressable } from "react-native";
 import { ChevronLeft } from "lucide-react-native";
 import { useTheme } from "@/components/ui/gluestack-ui-provider/ThemeProvider/ThemeProvider";
+import { StackHeader } from "@/components/header/StackHeader";
 
 function InsertBackButton({ isDarkMode }) {
 	const router = useRouter();
+	const params = useLocalSearchParams();
+	const dest = params?.from === "launches" ? "/(auth)/(tabs)/launches" : "/";
 	return (
 		<Pressable
-			onPress={() => router.replace("/")}
+			onPress={() => router.replace(dest)}
 			style={{ paddingLeft: 8, paddingRight: 4 }}
 		>
 			<ChevronLeft size={24} color={isDarkMode ? "#F8FAFC" : "#0F172A"} />
@@ -24,6 +27,7 @@ export default function StackLayout() {
 			screenOptions={{
 				animation: "none",
 				headerBackVisible: false,
+				header: (props) => <StackHeader {...props} />,
 				headerStyle: {
 					backgroundColor: isDarkMode ? "#1C1C1E" : "#FFFFFF",
 				},
@@ -34,7 +38,7 @@ export default function StackLayout() {
 				},
 			}}
 		>
-			<Stack.Screen name="index" />
+			<Stack.Screen name="index" options={{ headerShown: false }} />
 			<Stack.Screen
 				name="insert"
 				options={({ route }) => ({
@@ -42,17 +46,13 @@ export default function StackLayout() {
 						? "Editar Transação"
 						: "Nova Transação",
 					headerLeft: () => <InsertBackButton isDarkMode={isDarkMode} />,
-					headerTitleAlign: "center",
-					headerTitleContainerStyle: {
-						marginLeft: 0,
-						paddingLeft: 0,
-					},
+					animateTitle: true,
 				})}
 			/>
 			<Stack.Screen name="view" options={{ title: "Detalhes" }} />
 			<Stack.Screen
 				name="family"
-				options={{ title: "Gerenciar família" }}
+				options={{ title: "Gerenciar família", animateTitle: true }}
 			/>
 		</Stack>
 	);

@@ -296,7 +296,7 @@ async function toTransacaoPayload(row: any) {
 	return {
 		tipo: row.tipo,
 		valor: Number(row.valor ?? 0),
-		categoria: row.categoria,
+		id_categoria: row.id_categoria ?? null,
 		id_pessoa: remotePessoa,
 		pessoa: row.pessoa ?? null,
 		id_imobilizado: remoteImobilizado,
@@ -1309,7 +1309,7 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
 		const isSameRow =
 			String(existingByRemote?.tipo || "") === String(remote?.tipo || "") &&
 			Number(existingByRemote?.valor || 0) === Number(remote?.valor || 0) &&
-			String(existingByRemote?.categoria || "") === String(remote?.categoria || "") &&
+			Number(existingByRemote?.id_categoria || 0) === Number(remote?.id_categoria || 0) &&
 			Number(existingByRemote?.id_pessoa || 0) === Number(localPessoaId || 0) &&
 			String(existingByRemote?.pessoa || "") === String(remote?.pessoa || "") &&
 			Number(existingByRemote?.id_imobilizado || 0) === Number(localImobilizadoId || 0) &&
@@ -1335,7 +1335,7 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
         UPDATE transacoes
         SET tipo = COALESCE(?, tipo),
             valor = COALESCE(?, valor),
-            categoria = COALESCE(?, categoria),
+            id_categoria = ?,
             id_pessoa = ?,
             pessoa = ?,
             id_imobilizado = ?,
@@ -1358,7 +1358,7 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
       `,
 			remote.tipo ?? null,
 			remote.valor ?? null,
-			remote.categoria ?? null,
+			remote.id_categoria ?? null,
 			localPessoaId,
 			remote.pessoa ?? null,
 			localImobilizadoId,
@@ -1397,7 +1397,7 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
         remote_id,
         tipo,
         valor,
-        categoria,
+        id_categoria,
         id_pessoa,
         pessoa,
         id_imobilizado,
@@ -1422,7 +1422,7 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
 		remote.id_transacao,
 		remote.tipo ?? null,
 		remote.valor ?? 0,
-		remote.categoria ?? null,
+		remote.id_categoria ?? null,
 		localPessoaId,
 		remote.pessoa ?? null,
 		localImobilizadoId,

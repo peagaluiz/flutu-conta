@@ -1,6 +1,6 @@
 import React, { useRef, useCallback, useState } from "react";
 import { useWindowDimensions, ScrollView, View, Pressable } from "react-native";
-import { Plus, FileText, ChevronRight, ChevronLeft } from "lucide-react-native";
+import { Plus, FileText, ChevronRight, ChevronLeft, SlidersHorizontal } from "lucide-react-native";
 
 import { Box } from "@/components/ui/box";
 import { HStack } from "@/components/ui/hstack";
@@ -14,7 +14,6 @@ const OUTER_PAD = 24;
 const CARD_PAD = 32;
 const GAP = 8;
 const VISIBLE = 3.5;
-// alphas do fade direito (transparente → opaco) e esquerdo (opaco → transparente)
 const FADE_R = [0, 0.15, 0.35, 0.6, 0.82, 1];
 const FADE_L = [1, 0.82, 0.6, 0.35, 0.15, 0];
 
@@ -36,6 +35,8 @@ export default function LaunchesHeader({
 	config,
 	colors,
 	onCreate,
+	onFilter,
+	filterActive = false,
 }) {
 	const { width: screenWidth } = useWindowDimensions();
 	const available = screenWidth - OUTER_PAD - CARD_PAD;
@@ -107,7 +108,6 @@ export default function LaunchesHeader({
 						))}
 					</ScrollView>
 
-					{/* Fade + seta direita — some quando a última coluna está visível */}
 					{!atEnd && (
 						<>
 							<View
@@ -164,7 +164,6 @@ export default function LaunchesHeader({
 						</>
 					)}
 
-					{/* Fade + seta esquerda — aparece quando a última coluna está visível */}
 					{atEnd && (
 						<>
 							<View
@@ -244,10 +243,34 @@ export default function LaunchesHeader({
 						</Text>
 					</HStack>
 
-					<Button size="sm" onPress={onCreate}>
-						<ButtonIcon as={Plus} />
-						<ButtonText>Novo</ButtonText>
-					</Button>
+					<HStack className="items-center gap-2">
+						<Pressable
+							onPress={onFilter}
+							style={{ padding: 6, position: "relative" }}
+						>
+							<SlidersHorizontal
+								size={18}
+								color={filterActive ? colors.brand : colors.textSecondary}
+							/>
+							{filterActive && (
+								<View
+									style={{
+										position: "absolute",
+										top: 2,
+										right: 2,
+										width: 7,
+										height: 7,
+										borderRadius: 4,
+										backgroundColor: colors.brand,
+									}}
+								/>
+							)}
+						</Pressable>
+						<Button size="sm" onPress={onCreate}>
+							<ButtonIcon as={Plus} />
+							<ButtonText>Novo</ButtonText>
+						</Button>
+					</HStack>
 				</HStack>
 			</Box>
 		</Box>

@@ -8,17 +8,6 @@ export const decimalMask = createNumberMask({
 	precision: 2,
 });
 
-export const categorias = [
-	"Alimentação",
-	"Moradia",
-	"Transporte",
-	"Saúde",
-	"Educação",
-	"Lazer",
-	"Salário",
-	"Investimentos",
-	"Outros"
-];
 
 export const insertSchema = yup.object().shape({
 	tipo: yup.string().required("Selecione o tipo").oneOf(["pagar", "receber"]),

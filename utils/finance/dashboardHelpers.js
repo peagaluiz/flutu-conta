@@ -126,13 +126,14 @@ export function buildResumoGeral(items = []) {
 	);
 }
 
-export function finalizeResumo(resumo) {
+export function finalizeResumo(resumo, saldoInicial = 0) {
 	const saldo = resumo.entradas - resumo.saidas;
-	const saldoReal = resumo.entradasPagas - resumo.saidasPagas;
+	const saldoReal = saldoInicial + resumo.entradasPagas - resumo.saidasPagas;
 	return {
 		...resumo,
 		saldo,
 		saldoReal,
+		saldoInicial,
 		entradasLabel: formatCurrency(resumo.entradas),
 		saidasLabel: formatCurrency(resumo.saidas),
 		saldoLabel: formatCurrency(saldo),
@@ -271,6 +272,63 @@ export function buildCategoryExpenses(items = [], top = 6) {
 		items: sorted,
 		maxValue: maxValue <= 0 ? 1 : maxValue,
 	};
+}
+
+export function buildBanksBreakdown(items = [], banks = []) {
+	const base = normalizeTransactions(items);
+	const bankMap = new Map();
+
+	(Array.isArray(banks) ? banks : []).forEach((bank) => {
+		const key = Number(bank.id_banco);
+		bankMap.set(key, {
+			id_banco: key,
+			nome: bank.nome,
+			cor_hex: bank.cor_hex || "#6B7280",
+			gastos: 0,
+			gastosFuturos: 0,
+			recebidos: 0,
+			items: [],
+		});
+	});
+
+	base.forEach((item) => {
+		const key = Number(item.id_banco || 0);
+		let entry = bankMap.get(key);
+		if (!entry) {
+			entry = {
+				id_banco: key || null,
+				nome: key ? "Banco removido" : "Sem banco",
+				cor_hex: "#6B7280",
+				gastos: 0,
+				gastosFuturos: 0,
+				recebidos: 0,
+				items: [],
+			};
+			bankMap.set(key, entry);
+		}
+		entry.items.push(item);
+		if (item.tipo === "pagar") {
+			if (item.status === "pago") entry.gastos += item.valor;
+			else entry.gastosFuturos += item.valor;
+		} else if (item.tipo === "receber" && item.status === "pago") {
+			entry.recebidos += item.valor;
+		}
+	});
+
+	const list = Array.from(bankMap.values())
+		.filter((b) => b.gastos > 0 || b.gastosFuturos > 0 || b.recebidos > 0)
+		.sort(
+			(a, b) =>
+				b.gastos + b.gastosFuturos + b.recebidos -
+				(a.gastos + a.gastosFuturos + a.recebidos)
+		);
+
+	const maxValue = list.reduce(
+		(acc, b) => Math.max(acc, b.gastos, b.gastosFuturos, b.recebidos),
+		0
+	);
+
+	return { items: list, maxValue: maxValue <= 0 ? 1 : maxValue };
 }
 
 export function applyRangeFilter(items = [], range = "90d") {

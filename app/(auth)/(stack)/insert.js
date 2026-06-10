@@ -1,6 +1,5 @@
 import { useMemo, useEffect } from "react";
-import Animated, { FadeIn } from "react-native-reanimated";
-import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
+import { ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "expo-router";
 import { useSelectorOverlay } from "@/state/SelectorOverlayContext";
@@ -16,7 +15,6 @@ import { Save } from "lucide-react-native";
 
 import {
 	decimalMask,
-	categorias,
 	formatDateDisplay,
 	parseDateValue,
 	toISODate,
@@ -52,6 +50,7 @@ export default function Insert() {
 		family,
 		selectedCatalogBanco,
 		handleBancoSelect,
+		categories,
 	} = useInsertForm();
 
 	const { control, handleSubmit, formState: { errors }, setValue, watch } = form;
@@ -81,107 +80,104 @@ export default function Insert() {
 					onSelect={handleBancoSelect}
 					themeColors={themeColors}
 					actionSheetContentStyle={actionSheetContentStyle}
+					disabled={isSaving}
 				/>
 			),
 		});
-	}, [selectedCatalogBanco, handleBancoSelect, themeColors, actionSheetContentStyle]);
+	}, [selectedCatalogBanco, handleBancoSelect, themeColors, actionSheetContentStyle, isSaving]);
 
 	const shouldShowSkeleton = isLoading || isBooting;
 
 	return (
-		<KeyboardAwareScrollView
+		<ScrollView
 			className="w-full"
 			style={{ marginBottom: insets.bottom, backgroundColor: themeColors.screen }}
 			contentContainerStyle={{ flexGrow: 1 }}
-			extraScrollHeight={30}
 			keyboardShouldPersistTaps="handled"
-			enableOnAndroid
-			enabled={!isSelectorOpen}
+			scrollEnabled={!isSelectorOpen}
 		>
-			<Animated.View entering={FadeIn.duration(300)}>
-				<Box className="relative">
-					{shouldShowSkeleton && (
-						<Box className="absolute left-0 right-0 top-0 z-50">
-							<InsertFormSkeleton isDarkMode={isDarkMode} />
-						</Box>
-					)}
-					<Box
-						className="gap-4 p-3"
-						style={{ opacity: shouldShowSkeleton ? 0 : 1 }}
-						pointerEvents={shouldShowSkeleton ? "none" : "auto"}
-					>
-						<TransacaoMainSection
-							isDarkMode={isDarkMode}
-							themeColors={themeColors}
-							isEditMode={isEditMode}
-							control={control}
-							errors={errors}
-							decimalMask={decimalMask}
-							categorias={categorias}
-							actionSheetContentStyle={actionSheetContentStyle}
-							dataVencimento={dataVencimento}
-							showDatePicker={showDatePicker}
-							setShowDatePicker={setShowDatePicker}
-							parseDateValue={parseDateValue}
-							toISODate={toISODate}
-							formatDateDisplay={formatDateDisplay}
-							canShareWithFamily={Boolean(family?.id)}
-						/>
-						<RecurrenceSection
-							isDarkMode={isDarkMode}
-							themeColors={themeColors}
-							control={control}
-							errors={errors}
-							recurrenceMode={recurrenceMode}
-							recurrenceFrequency={recurrenceFrequency}
-							recurrenceFrequencyLabel={recurrenceFrequencyLabel}
-							dataVencimento={dataVencimento}
-							isEditMode={isEditMode}
-							isFromRecurrence={isFromRecurrence}
-							recurrenceMeta={recurrenceMeta}
-							showRecurrenceEndPicker={showRecurrenceEndPicker}
-							setShowRecurrenceEndPicker={setShowRecurrenceEndPicker}
-							setValue={setValue}
-							formatDateDisplay={formatDateDisplay}
-							parseDateValue={parseDateValue}
-							toISODate={toISODate}
-						/>
-						<VStack className="w-full pb-5 justify-end">
-							<ObservacaoSection
-								control={control}
-								errors={errors}
-								isDarkMode={isDarkMode}
-								themeColors={themeColors}
-							/>
-							<HStack space="md" className="w-full justify-end">
-								<Button
-									action="secondary"
-									size="lg"
-									variant="outline"
-									onPress={handleBack}
-								>
-									<ButtonText>Cancelar</ButtonText>
-								</Button>
-								<Button
-									action="positive"
-									size="lg"
-									onPress={handleSubmit(handleSave)}
-									isDisabled={isSaving || isLoading}
-								>
-									<ButtonIcon as={Save} />
-									<ButtonText>
-										{isLoading
-											? "Carregando..."
-											: isSaving
-											? "Salvando..."
-											: "Salvar"}
-									</ButtonText>
-								</Button>
-							</HStack>
-						</VStack>
+			<Box className="relative">
+				{shouldShowSkeleton && (
+					<Box className="absolute left-0 right-0 top-0 z-50">
+						<InsertFormSkeleton isDarkMode={isDarkMode} />
 					</Box>
+				)}
+				<Box
+					className="gap-4 p-3"
+					style={{ opacity: shouldShowSkeleton ? 0 : 1 }}
+					pointerEvents={shouldShowSkeleton || isSaving ? "none" : "auto"}
+				>
+					<TransacaoMainSection
+						isDarkMode={isDarkMode}
+						themeColors={themeColors}
+						isEditMode={isEditMode}
+						control={control}
+						errors={errors}
+						decimalMask={decimalMask}
+						categories={categories}
+						actionSheetContentStyle={actionSheetContentStyle}
+						dataVencimento={dataVencimento}
+						showDatePicker={showDatePicker}
+						setShowDatePicker={setShowDatePicker}
+						parseDateValue={parseDateValue}
+						toISODate={toISODate}
+						formatDateDisplay={formatDateDisplay}
+						canShareWithFamily={Boolean(family?.id)}
+					/>
+					<RecurrenceSection
+						isDarkMode={isDarkMode}
+						themeColors={themeColors}
+						control={control}
+						errors={errors}
+						recurrenceMode={recurrenceMode}
+						recurrenceFrequency={recurrenceFrequency}
+						recurrenceFrequencyLabel={recurrenceFrequencyLabel}
+						dataVencimento={dataVencimento}
+						isEditMode={isEditMode}
+						isFromRecurrence={isFromRecurrence}
+						recurrenceMeta={recurrenceMeta}
+						showRecurrenceEndPicker={showRecurrenceEndPicker}
+						setShowRecurrenceEndPicker={setShowRecurrenceEndPicker}
+						setValue={setValue}
+						formatDateDisplay={formatDateDisplay}
+						parseDateValue={parseDateValue}
+						toISODate={toISODate}
+					/>
+					<VStack className="w-full pb-5 justify-end">
+						<ObservacaoSection
+							control={control}
+							errors={errors}
+							isDarkMode={isDarkMode}
+							themeColors={themeColors}
+						/>
+						<HStack space="md" className="w-full justify-end">
+							<Button
+								action="secondary"
+								size="lg"
+								variant="outline"
+								onPress={handleBack}
+							>
+								<ButtonText>Cancelar</ButtonText>
+							</Button>
+							<Button
+								action="positive"
+								size="lg"
+								onPress={handleSubmit(handleSave)}
+								isDisabled={isSaving || isLoading}
+							>
+								<ButtonIcon as={Save} />
+								<ButtonText>
+									{isLoading
+										? "Carregando..."
+										: isSaving
+										? "Salvando..."
+										: "Salvar"}
+								</ButtonText>
+							</Button>
+						</HStack>
+					</VStack>
 				</Box>
-			</Animated.View>
-		</KeyboardAwareScrollView>
+			</Box>
+		</ScrollView>
 	);
 }

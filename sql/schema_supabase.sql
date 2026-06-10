@@ -121,6 +121,15 @@ CREATE TABLE IF NOT EXISTS public.banco_catalogo (
     ativo    BOOLEAN   NOT NULL DEFAULT true
 );
 
+CREATE TABLE IF NOT EXISTS public.categoria_catalogo (
+    id       BIGSERIAL PRIMARY KEY,
+    nome     TEXT      NOT NULL,
+    icone    TEXT,                            -- nome do ícone Lucide (ex: "Utensils")
+    cor_hex  TEXT      NOT NULL DEFAULT '#6B7280',
+    ordem    INTEGER   NOT NULL DEFAULT 0,
+    ativo    BOOLEAN   NOT NULL DEFAULT true
+);
+
 CREATE TABLE IF NOT EXISTS public.profiles (
     id         UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     nome       TEXT,
@@ -192,20 +201,20 @@ CREATE TABLE IF NOT EXISTS public.imobilizado (
 
 CREATE TABLE IF NOT EXISTS public.transacoes (
     id_transacao     BIGSERIAL PRIMARY KEY,
-    tipo             TEXT           NOT NULL,                    -- 'pagar' | 'receber'
+    tipo             TEXT           NOT NULL,
     valor            NUMERIC(15,2)  NOT NULL,
-    categoria        TEXT           NOT NULL,
     id_pessoa        BIGINT         REFERENCES public.pessoa(id_pessoa) ON DELETE SET NULL,
     pessoa           TEXT,
     id_imobilizado   BIGINT         REFERENCES public.imobilizado(id_imobilizado) ON DELETE SET NULL,
     id_banco         BIGINT         REFERENCES public.banco(id_banco) ON DELETE SET NULL,
+    id_categoria     BIGINT         REFERENCES public.categoria_catalogo(id) ON DELETE SET NULL,
     family_id        BIGINT         REFERENCES public.familias(id) ON DELETE SET NULL,
     is_family_shared INTEGER        NOT NULL DEFAULT 0,
     user_id          UUID           REFERENCES auth.users(id) ON DELETE SET NULL,
     data_transacao   TIMESTAMPTZ    NOT NULL DEFAULT now(),
     data_vencimento  TIMESTAMPTZ,
     data_baixa       TIMESTAMPTZ,
-    status           TEXT           NOT NULL DEFAULT 'pendente', -- 'pendente' | 'pago'
+    status           TEXT           NOT NULL DEFAULT 'pendente',
     observacao       TEXT,
     json             JSONB,
     created_at       TIMESTAMPTZ    NOT NULL DEFAULT now(),
@@ -254,7 +263,8 @@ CREATE TABLE IF NOT EXISTS public.recorrencia_transacoes (
 
 GRANT USAGE ON SCHEMA public TO authenticated, anon;
 
-GRANT SELECT ON TABLE public.banco_catalogo TO authenticated, anon;
+GRANT SELECT ON TABLE public.banco_catalogo      TO authenticated, anon;
+GRANT SELECT ON TABLE public.categoria_catalogo  TO authenticated, anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.banco                  TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.profiles               TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.familias               TO authenticated;
@@ -422,9 +432,9 @@ CREATE INDEX IF NOT EXISTS idx_transacoes_family            ON public.transacoes
 CREATE INDEX IF NOT EXISTS idx_transacoes_status            ON public.transacoes(status, deleted);
 CREATE INDEX IF NOT EXISTS idx_transacoes_data_transacao    ON public.transacoes(data_transacao DESC);
 CREATE INDEX IF NOT EXISTS idx_transacoes_data_vencimento   ON public.transacoes(data_vencimento);
-CREATE INDEX IF NOT EXISTS idx_transacoes_tipo_categoria    ON public.transacoes(tipo, categoria);
 CREATE INDEX IF NOT EXISTS idx_transacoes_id_pessoa         ON public.transacoes(id_pessoa);
 CREATE INDEX IF NOT EXISTS idx_transacoes_id_imobilizado    ON public.transacoes(id_imobilizado);
+CREATE INDEX IF NOT EXISTS idx_transacoes_id_categoria      ON public.transacoes(id_categoria);
 
 -- recorrencias
 CREATE INDEX IF NOT EXISTS idx_recorrencias_status_due ON public.recorrencias(status, next_due_date);
@@ -440,6 +450,7 @@ CREATE INDEX IF NOT EXISTS idx_recorrencia_transacoes_due_date    ON public.reco
 -- =============================================================================
 
 ALTER TABLE public.banco_catalogo         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.categoria_catalogo     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.banco                  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.profiles               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.familias               ENABLE ROW LEVEL SECURITY;
@@ -460,6 +471,24 @@ ALTER TABLE public.recorrencia_transacoes ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "banco_catalogo_read_all" ON public.banco_catalogo;
 CREATE POLICY "banco_catalogo_read_all"
     ON public.banco_catalogo FOR SELECT USING (true);
+
+-- ─── categoria_catalogo ───────────────────────────────────────────────────────
+DROP POLICY IF EXISTS "categoria_catalogo_read_all" ON public.categoria_catalogo;
+CREATE POLICY "categoria_catalogo_read_all"
+    ON public.categoria_catalogo FOR SELECT USING (true);
+
+-- Seed: categorias de lançamentos
+INSERT INTO public.categoria_catalogo (nome, icone, cor_hex, ordem) VALUES
+    ('Alimentação',  'Utensils',      '#F97316', 1),
+    ('Moradia',      'Home',          '#3B82F6', 2),
+    ('Transporte',   'Car',           '#8B5CF6', 3),
+    ('Saúde',        'HeartPulse',    '#EF4444', 4),
+    ('Educação',     'GraduationCap', '#10B981', 5),
+    ('Lazer',        'Smile',         '#F59E0B', 6),
+    ('Salário',      'Briefcase',     '#06B6D4', 7),
+    ('Investimentos','TrendingUp',    '#22C55E', 8),
+    ('Outros',       'HelpCircle',    '#6B7280', 9)
+ON CONFLICT DO NOTHING;
 
 -- Seed: bancos brasileiros principais
 INSERT INTO public.banco_catalogo (nome, cor_hex) VALUES
