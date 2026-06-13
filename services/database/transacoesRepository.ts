@@ -4,13 +4,21 @@ import { db, nowISO } from "@/services/database/db";
 import { ImobilizadoRow, TransacaoDatabase } from "@/services/database/types";
 import {
 	activateRecorrencia,
+	applyEditToRecurrenceTransacoes,
 	createRecurrenceFromNewTransaction,
 	deleteRecorrencia,
+	deleteRecorrenciaWithTransacoes,
+	getRecorrenciaByUuid,
 	listRecorrencias,
+	materializeRecurrenceOccurrence,
 	pauseRecorrencia,
 	type RecurrenceCreateConfig,
 	validateAndGeneratePendingRecurrences,
 } from "@/services/database/recurrenceService";
+import {
+	compareTransacaoRows,
+	projectGhostOccurrences,
+} from "@/services/database/recurrenceProjection";
 import {
 	fetchRemoteTransacaoById,
 	syncAllPendingData,
@@ -484,6 +492,15 @@ export function createTransacoesRepository() {
 			const limit = params?.limit ?? 50;
 			const offset = (page - 1) * limit;
 
+			const ghosts =
+				params?.dateTo && params?.dateField !== "data_baixa"
+					? await projectGhostOccurrences({
+							dateFrom: params?.dateFrom ?? null,
+							dateTo: params.dateTo,
+							visibility,
+						})
+					: [];
+
 			const rows = await db.getAllAsync<any>(
 				`
 				SELECT
@@ -518,11 +535,20 @@ export function createTransacoesRepository() {
 				...localVisibility.args,
 				...(params?.dateFrom ? [params.dateFrom] : []),
 				...(params?.dateTo ? [params.dateTo] : []),
-				limit,
-				offset
+				ghosts.length ? page * limit : limit,
+				ghosts.length ? 0 : offset
 			);
 
-			return (rows ?? []).map((row) => normalizeTransacaoPessoa(row, visibility.familyId));
+			const normalized = (rows ?? []).map((row) =>
+				normalizeTransacaoPessoa(row, visibility.familyId)
+			);
+			if (!ghosts.length) return normalized;
+
+			const merged = [
+				...normalized,
+				...ghosts.map((ghost) => normalizeTransacaoPessoa(ghost, visibility.familyId)),
+			].sort(compareTransacaoRows);
+			return merged.slice(offset, offset + limit);
 		},
 
 		syncPendingTransacoes,
@@ -536,10 +562,14 @@ export function createTransacoesRepository() {
 			},
 
 			validateAndGeneratePendingRecurrences,
+			materializeRecurrenceOccurrence,
+			getRecorrenciaByUuid,
 			listRecorrencias,
 			pauseRecorrencia,
 			activateRecorrencia,
 			deleteRecorrencia,
+			deleteRecorrenciaWithTransacoes,
+			applyEditToRecurrenceTransacoes,
 
 		darBaixa: async (id_transacao: number, dataBaixa?: string | null) => {
 			if (!db) throw new Error("Banco local indisponivel");

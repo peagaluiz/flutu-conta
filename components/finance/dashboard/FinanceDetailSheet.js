@@ -15,6 +15,7 @@ import {
 	ActionsheetDragIndicatorWrapper,
 } from "@/components/ui/actionsheet";
 import { formatCurrency, formatDate } from "@/utils/finance/helpers";
+import { PrevistaBadge } from "@/components/finance/PrevistaBadge";
 
 const GREEN = "#16A34A";
 const RED = "#DC2626";
@@ -135,13 +136,18 @@ export function FinanceDetailSheet({
 												}}
 											/>
 											<VStack className="flex-1 pr-2">
-												<Text
-													className="text-sm font-medium"
-													style={{ color: colors.textPrimary }}
-													numberOfLines={1}
-												>
-													{item.categoria || "Sem categoria"}
-												</Text>
+												<HStack className="items-center gap-2">
+													<Text
+														className="text-sm font-medium"
+														style={{ color: colors.textPrimary }}
+														numberOfLines={1}
+													>
+														{item.categoria || "Sem categoria"}
+													</Text>
+													{item.is_ghost ? (
+														<PrevistaBadge colors={colors} />
+													) : null}
+												</HStack>
 												<Text
 													className="text-xs"
 													style={{ color: colors.textSecondary }}

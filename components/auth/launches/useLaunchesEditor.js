@@ -73,8 +73,12 @@ export function useLaunchesEditor({
 	}, [closeEditor, section]);
 
 	const openCreate = useCallback(() => {
-		if (section === "transacoes" || section === "recorrencias") {
+		if (section === "transacoes") {
 			router.push({ pathname: "/(auth)/(stack)/insert", params: { from: "launches" } });
+			return;
+		}
+		if (section === "recorrencias") {
+			router.push({ pathname: "/(auth)/(stack)/insert", params: { from: "launches", recurrence_mode: "recorrente" } });
 			return;
 		}
 		if (section === "bancos") {
@@ -94,6 +98,18 @@ export function useLaunchesEditor({
 		(item) => {
 			const itemType = getItemType(item);
 			if (itemType === "transacoes") {
+				if (item.is_ghost) {
+					router.push({
+						pathname: "/(auth)/(stack)/insert",
+						params: {
+							ghost_recurrence_uuid: String(item.recurrence_uuid),
+							ghost_due_date: String(item.ghost_due_date),
+							ghost_data_vencimento: String(item.data_vencimento || ""),
+							from: "launches",
+						},
+					});
+					return;
+				}
 				router.push({
 					pathname: "/(auth)/(stack)/insert",
 					params: { id_transacao: String(item.id_transacao), from: "launches" },

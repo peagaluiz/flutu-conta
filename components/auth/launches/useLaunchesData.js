@@ -126,6 +126,31 @@ export function useLaunchesData({ database, section, family, userData, filters =
 
 	const deleteItem = useCallback(
 		(item) => {
+			if (item?.is_ghost) {
+				Alert.alert("Excluir", "Deseja pular esta ocorrência da recorrência?", [
+					{ text: "Cancelar", style: "cancel" },
+					{
+						text: "Excluir",
+						style: "destructive",
+						onPress: async () => {
+							try {
+								await database.materializeRecurrenceOccurrence({
+									recurrenceUuid: item.recurrence_uuid,
+									dueDate: item.ghost_due_date,
+									deleted: true,
+								});
+								setPage(1);
+								setHasMore(true);
+								await loadData(section, { silent: true, page: 1 });
+							} catch {
+								Alert.alert("Erro", "Falha ao excluir.");
+							}
+						},
+					},
+				]);
+				return;
+			}
+
 			const itemType = getItemType(item);
 			const deleteAction = itemType
 				? getDeleteAction(database, itemType)
@@ -184,7 +209,13 @@ export function useLaunchesData({ database, section, family, userData, filters =
 	const darBaixa = useCallback(
 		async (item) => {
 			try {
-				if (item.status === "pendente") {
+				if (item?.is_ghost) {
+					await database.materializeRecurrenceOccurrence({
+						recurrenceUuid: item.recurrence_uuid,
+						dueDate: item.ghost_due_date,
+						status: "pago",
+					});
+				} else if (item.status === "pendente") {
 					await database.darBaixa(item.id_transacao);
 				} else {
 					await database.removerBaixa(item.id_transacao);
@@ -241,6 +272,24 @@ export function useLaunchesData({ database, section, family, userData, filters =
 		[database, loadData, section]
 	);
 
+	const deleteRecorrenciaScope = useCallback(
+		async (item, withTransacoes) => {
+			try {
+				if (withTransacoes) {
+					await database.deleteRecorrenciaWithTransacoes(item.uuid);
+				} else {
+					await database.deleteRecorrencia(item.uuid);
+				}
+				setPage(1);
+				setHasMore(true);
+				await loadData(section, { silent: true, page: 1 });
+			} catch {
+				Alert.alert("Erro", "Falha ao excluir recorrência.");
+			}
+		},
+		[database, loadData, section]
+	);
+
 	const validItems = useMemo(() => {
 		const base = filterValidItems(items, section);
 		const q = (filters.searchText || "").toLowerCase().trim();
@@ -268,5 +317,6 @@ export function useLaunchesData({ database, section, family, userData, filters =
 		darBaixaBulk,
 		removerBaixaBulk,
 		deleteItemsBulk,
+		deleteRecorrenciaScope,
 	};
 }

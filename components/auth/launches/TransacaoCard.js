@@ -7,6 +7,7 @@ import ActionButton from "./ActionButton";
 import CardBase from "./CardBase";
 import { CheckCircle, CheckCircle2, Circle, Pencil, Trash2 } from "lucide-react-native";
 import { formatCurrency, formatDate } from "@/utils/finance/helpers";
+import { PrevistaBadge } from "@/components/finance/PrevistaBadge";
 
 function getDescricao(item) {
     try {
@@ -138,6 +139,9 @@ function TransacaoCard({
                             >
                                 {item.categoria || "Sem categoria"}
                             </Text>
+                            {item.is_ghost ? (
+                                <PrevistaBadge colors={colors} style={{ marginRight: 8 }} />
+                            ) : null}
                             <Text
                                 className="text-xs text-right"
                                 style={{ color: colors.textSecondary }}

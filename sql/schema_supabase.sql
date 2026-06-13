@@ -224,7 +224,7 @@ CREATE TABLE IF NOT EXISTS public.transacoes (
 
 CREATE TABLE IF NOT EXISTS public.recorrencias (
     id_recurrencia    BIGSERIAL   PRIMARY KEY,
-    uuid              UUID        NOT NULL UNIQUE DEFAULT uuid_generate_v4(),
+    uuid              TEXT        NOT NULL UNIQUE DEFAULT (uuid_generate_v4()::text),
     status            TEXT        NOT NULL DEFAULT 'ativa',   -- 'ativa' | 'pausada' | 'encerrada'
     frequency         TEXT        NOT NULL,                   -- 'mensal' | 'semanal' | 'anual'
     interval_days     INTEGER,                                -- reservado, não utilizado

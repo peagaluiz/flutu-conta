@@ -23,6 +23,7 @@ import { TransacaoMainSection } from "@/components/finance/insert/TransacaoMainS
 import { ObservacaoSection } from "@/components/finance/insert/ObservacaoSection";
 import { RecurrenceSection } from "@/components/finance/insert/RecurrenceSection";
 import { InsertFormSkeleton } from "@/components/finance/insert/InsertFormSkeleton";
+import { RecurringEditScopeModal } from "@/components/finance/insert/RecurringEditScopeModal";
 import { useInsertForm } from "@/components/finance/insert/useInsertForm";
 
 export default function Insert() {
@@ -51,6 +52,9 @@ export default function Insert() {
 		selectedCatalogBanco,
 		handleBancoSelect,
 		categories,
+		recurringEditModalOpen,
+		onCloseRecurringEditModal,
+		handleRecurringEditScope,
 	} = useInsertForm();
 
 	const { control, handleSubmit, formState: { errors }, setValue, watch } = form;
@@ -89,6 +93,7 @@ export default function Insert() {
 	const shouldShowSkeleton = isLoading || isBooting;
 
 	return (
+		<>
 		<ScrollView
 			className="w-full"
 			style={{ marginBottom: insets.bottom, backgroundColor: themeColors.screen }}
@@ -179,5 +184,12 @@ export default function Insert() {
 				</Box>
 			</Box>
 		</ScrollView>
+
+		<RecurringEditScopeModal
+			isOpen={recurringEditModalOpen}
+			onClose={onCloseRecurringEditModal}
+			onConfirm={handleRecurringEditScope}
+		/>
+		</>
 	);
 }

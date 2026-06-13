@@ -1,5 +1,6 @@
 import { useAuth } from "@/state/AuthContext";
 import { useTheme } from "@/components/ui/gluestack-ui-provider/ThemeProvider/ThemeProvider";
+import { useSyncProgress } from "@/state/SyncProgressContext";
 import React from "react";
 import { Platform } from "react-native";
 import * as ImagePicker from "expo-image-picker";
@@ -27,6 +28,7 @@ const HeaderWrapper = ({ navigation, theme }) => {
 	const { theme: currentTheme, toggleTheme } = useTheme();
 	const { syncAllPendingData } = useDatabase();
 	const { showNewToast } = useErrorToast();
+	const { startSync, endSync, updateStep } = useSyncProgress();
 
 	const profileName = userData?.nome?.trim() || "Meu perfil";
 	const profileEmail = userData?.email || "";
@@ -87,16 +89,9 @@ const HeaderWrapper = ({ navigation, theme }) => {
 	const handleForceSync = async () => {
 		handleClose();
 		setIsSyncing(true);
+		startSync("Sincronizando dados...");
 		try {
-			const result = await syncAllPendingData({
-				force: true,
-				throwOnError: true,
-			});
-			const synced = Number(result?.synced || 0);
-			showNewToast(
-				"success",
-				`Sincronização concluída. ${synced} registro(s) sincronizado(s).`
-			);
+			await syncAllPendingData({ force: true, onProgress: updateStep });
 		} catch (error) {
 			showNewToast(
 				"error",
@@ -104,6 +99,7 @@ const HeaderWrapper = ({ navigation, theme }) => {
 			);
 		} finally {
 			setIsSyncing(false);
+			endSync();
 		}
 	};
 

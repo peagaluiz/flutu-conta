@@ -1,15 +1,17 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { FlatList, Keyboard, Dimensions } from "react-native";
+import { FlatList, Keyboard, Dimensions, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
     useSharedValue,
-    withSpring,
+    withTiming,
+    Easing,
     useAnimatedStyle,
 } from "react-native-reanimated";
 
 import { ChevronRight, Circle, CircleCheckBig, CirclePlus, ChevronDown, Search, LucideIcon } from "lucide-react-native";
 
-const SPRING = { damping: 16, stiffness: 180, mass: 0.7 };
+// Timing sem overshoot: acompanha o teclado e para exatamente onde ele parar
+const TIMING = { duration: 250, easing: Easing.out(Easing.cubic) };
 // Cache da última altura do teclado. Persiste entre renders pra animar
 // imediatamente no onFocus, sem esperar keyboardDidShow.
 let cachedKeyboardHeight = 0;
@@ -86,10 +88,6 @@ export function SearchableSelectSheet({
     const insets = useSafeAreaInsets();
     const [searchTerm, setSearchTerm] = useState("");
     const [shouldAutoFocus, setShouldAutoFocus] = useState(false);
-    // translateY do wrapper ao redor do ActionsheetContent.
-    // Subir o sheet pelo thread UI (Reanimated) em vez de mudar paddingBottom
-    // (que passa por JS → re-render → onLayout → gluestack → Legend Motion),
-    // elimina o delay e o "voo" de uma vez só.
     const kbOffset = useSharedValue(0);
 
     useEffect(() => {
@@ -98,11 +96,11 @@ export function SearchableSelectSheet({
             cachedKeyboardHeight = kh;
             // Corrige para a altura real caso o onFocus tenha usado o cache/fallback
             if (Math.abs(kbOffset.value + kh) > 5) {
-                kbOffset.value = withSpring(-kh, SPRING);
+                kbOffset.value = withTiming(-kh, TIMING);
             }
         });
         const hide = Keyboard.addListener("keyboardDidHide", () => {
-            kbOffset.value = withSpring(0, SPRING);
+            kbOffset.value = withTiming(0, TIMING);
         });
         return () => {
             show.remove();
@@ -113,7 +111,7 @@ export function SearchableSelectSheet({
     const handleInputFocus = () => {
         if (kbOffset.value < -10) return; // já animado
         const kh = cachedKeyboardHeight || 300;
-        kbOffset.value = withSpring(-kh, SPRING);
+        kbOffset.value = withTiming(-kh, TIMING);
     };
 
     const kbWrapperStyle = useAnimatedStyle(() => ({
@@ -122,8 +120,6 @@ export function SearchableSelectSheet({
         height: "100%",
     }));
 
-    // Espaço livre acima do teclado = tela - insetTopo - teclado - cabeçalho do sheet.
-    // kbOffset.value é negativo (= -alturaTeclado) quando o teclado está aberto.
     const availableHeight =
         SCREEN_HEIGHT - insets.top - SHEET_HEADER_HEIGHT;
 
@@ -203,7 +199,17 @@ export function SearchableSelectSheet({
                             autoFocus={shouldAutoFocus}
                         />
 
-                        <Box style={{ flex: 1 }}>
+                        <Box
+                            style={{
+                                height: StyleSheet.hairlineWidth,
+                                backgroundColor: textSecondary,
+                                opacity: 0.4,
+                                marginHorizontal: -28,
+                                marginBottom: 8,
+                            }}
+                        />
+
+                        <Box className="flex-1">
                             <FlatList
                                 data={filteredOptions}
                                 keyExtractor={(item) => String(item.id)}

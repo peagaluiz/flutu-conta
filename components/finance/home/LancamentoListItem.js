@@ -13,6 +13,7 @@ import {
 	formatDate,
 	isRecebimentoVencido,
 } from "@/utils/finance/helpers";
+import { PrevistaBadge } from "@/components/finance/PrevistaBadge";
 
 function getDescricao(item) {
 	try {
@@ -77,12 +78,15 @@ export function LancamentoListItem({ item, onPress, onLongPress }) {
 				</Box>
 
 				<Box className="flex-row items-center justify-between mt-0.5">
-					<Text
-						className="text-xs"
-						style={{ color: colors.textSecondary }}
-					>
-						{formatDate(item.data_vencimento)}
-					</Text>
+					<Box className="flex-row items-center gap-2">
+						<Text
+							className="text-xs"
+							style={{ color: colors.textSecondary }}
+						>
+							{formatDate(item.data_vencimento)}
+						</Text>
+						{item.is_ghost ? <PrevistaBadge colors={colors} /> : null}
+					</Box>
 					<Text
 						className="text-xs"
 						style={{ color: colors.textSecondary }}

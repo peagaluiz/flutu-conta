@@ -20,20 +20,20 @@ export type RecurrenceCreateConfig = {
 
 type SeedTransacaoPayload = Omit<TransacaoDatabase, "id_transacao" | "created_at" | "updated_at">;
 
-function toISODate(dateObj: Date) {
+export function toISODate(dateObj: Date) {
 	const yyyy = dateObj.getFullYear();
 	const mm = String(dateObj.getMonth() + 1).padStart(2, "0");
 	const dd = String(dateObj.getDate()).padStart(2, "0");
 	return `${yyyy}-${mm}-${dd}`;
 }
 
-function parseISODate(value?: string | null) {
+export function parseISODate(value?: string | null) {
 	if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return null;
 	const [yyyy, mm, dd] = String(value).split("-").map(Number);
 	return new Date(yyyy, mm - 1, dd);
 }
 
-function atNoonISO(isoDate: string) {
+export function atNoonISO(isoDate: string) {
 	const date = parseISODate(isoDate) ?? new Date();
 	date.setHours(12, 0, 0, 0);
 	return date.toISOString();
@@ -45,7 +45,7 @@ function addDays(base: Date, days: number) {
 	return next;
 }
 
-function addMonthsClamped(base: Date, monthsToAdd: number) {
+export function addMonthsClamped(base: Date, monthsToAdd: number) {
 	const sourceDay = base.getDate();
 	const year = base.getFullYear();
 	const month = base.getMonth() + monthsToAdd;
@@ -58,7 +58,7 @@ function addYearsClamped(base: Date, yearsToAdd: number) {
 	return addMonthsClamped(base, yearsToAdd * 12);
 }
 
-function getNextDueDate(currentDueDate: string, frequency: RecurrenceFrequency) {
+export function getNextDueDate(currentDueDate: string, frequency: RecurrenceFrequency) {
 	const base = parseISODate(currentDueDate) ?? new Date();
 	if (frequency === "semanal") return toISODate(addDays(base, 7));
 	if (frequency === "anual") return toISODate(addYearsClamped(base, 1));
@@ -99,7 +99,7 @@ function isNonWorkingDay(isoDate: string): boolean {
 	return false;
 }
 
-function adjustForNonWorking(isoDate: string, direction: "before" | "after"): string {
+export function adjustForNonWorking(isoDate: string, direction: "before" | "after"): string {
 	let current = isoDate;
 	const step = direction === "before" ? -1 : 1;
 	let safety = 0;
@@ -135,7 +135,7 @@ async function resolveVisibilityContext(params?: RecurrenceVisibilityParams) {
 	};
 }
 
-function buildSqlVisibilityClause(
+export function buildSqlVisibilityClause(
 	prefix: string,
 	visibility: { scope: VisibilityScope; userId: string | null; familyId: number | null }
 ) {
@@ -508,7 +508,9 @@ async function _validateAndGeneratePendingRecurrences(options?: {
         SET next_due_date = ?,
             occurrences_count = ?,
             last_generated_at = ?,
-            updated_at = ?
+            updated_at = ?,
+            sync_status = 'pending',
+            synced = 0
         WHERE id_recurrencia = ?
       `,
 			cursor,
@@ -522,6 +524,126 @@ async function _validateAndGeneratePendingRecurrences(options?: {
 	return { generated, validated };
 }
 
+export async function applyEditToRecurrenceTransacoes(params: {
+	recurrenceUuid: string;
+	currentTransacaoId: number;
+	scope: "this_and_future" | "all";
+	templatePayload: {
+		tipo?: string | null;
+		valor?: number | null;
+		id_categoria?: number | null;
+		id_pessoa?: number | null;
+		pessoa?: string | null;
+		id_imobilizado?: number | null;
+		id_banco?: number | null;
+		family_id?: number | null;
+		is_family_shared?: number | null;
+		observacao?: string | null;
+		json?: string | null;
+		user_id?: string | null;
+	};
+}) {
+	if (!db || Platform.OS === "web") return;
+
+	const recurrence = await db.getFirstAsync<any>(
+		`SELECT * FROM recorrencias WHERE uuid = ? AND deleted = 0 LIMIT 1`,
+		params.recurrenceUuid
+	);
+	if (!recurrence) return;
+
+	const currentLink = await db.getFirstAsync<any>(
+		`SELECT sequence FROM recorrencia_transacoes WHERE id_transacao = ? LIMIT 1`,
+		params.currentTransacaoId
+	);
+	const currentSequence = currentLink?.sequence ?? 0;
+
+	let linkedRows: Array<{ id_transacao: number }>;
+	if (params.scope === "this_and_future") {
+		linkedRows = await db.getAllAsync<any>(
+			`SELECT id_transacao FROM recorrencia_transacoes
+			 WHERE id_recurrencia = ? AND sequence > ?
+			 ORDER BY sequence ASC`,
+			recurrence.id_recurrencia,
+			currentSequence
+		);
+	} else {
+		linkedRows = await db.getAllAsync<any>(
+			`SELECT id_transacao FROM recorrencia_transacoes
+			 WHERE id_recurrencia = ?
+			 ORDER BY sequence ASC`,
+			recurrence.id_recurrencia
+		);
+	}
+
+	const p = params.templatePayload;
+	for (const link of linkedRows) {
+		if (link.id_transacao === params.currentTransacaoId) continue;
+		await db.runAsync(
+			`UPDATE transacoes
+			 SET tipo = COALESCE(?, tipo),
+			     valor = COALESCE(?, valor),
+			     id_categoria = ?,
+			     id_pessoa = ?,
+			     pessoa = ?,
+			     id_imobilizado = ?,
+			     id_banco = ?,
+			     family_id = ?,
+			     is_family_shared = ?,
+			     observacao = ?,
+			     json = ?,
+			     updated_at = ?,
+			     sync_status = 'pending',
+			     synced = 0
+			 WHERE id_transacao = ? AND deleted = 0`,
+			p.tipo ?? null,
+			p.valor ?? null,
+			p.id_categoria ?? null,
+			p.id_pessoa ?? null,
+			p.pessoa ?? null,
+			p.id_imobilizado ?? null,
+			p.id_banco ?? null,
+			p.family_id ?? null,
+			Number(p.is_family_shared ?? 0),
+			p.observacao ?? null,
+			p.json ?? null,
+			nowISO(),
+			link.id_transacao
+		);
+	}
+
+	let existingTemplate: any = {};
+	try {
+		existingTemplate = recurrence.template_json ? JSON.parse(recurrence.template_json) : {};
+	} catch {}
+
+	const newTemplateJson = JSON.stringify({
+		...existingTemplate,
+		tipo: p.tipo ?? existingTemplate.tipo,
+		valor: p.valor ?? existingTemplate.valor,
+		id_categoria: p.id_categoria ?? null,
+		id_pessoa: p.id_pessoa ?? null,
+		pessoa: p.pessoa ?? null,
+		id_imobilizado: p.id_imobilizado ?? null,
+		family_id: p.family_id ?? null,
+		is_family_shared: Number(p.is_family_shared ?? 0),
+		observacao: p.observacao ?? null,
+		json: p.json ?? null,
+		user_id: p.user_id ?? existingTemplate.user_id ?? null,
+	});
+
+	await db.runAsync(
+		`UPDATE recorrencias
+		 SET template_json = ?,
+		     updated_at = ?,
+		     sync_status = 'pending',
+		     synced = 0
+		 WHERE id_recurrencia = ?`,
+		newTemplateJson,
+		nowISO(),
+		recurrence.id_recurrencia
+	);
+}
+
 export async function listRecorrencias(params?: RecurrenceVisibilityParams) {
 	if (!db || Platform.OS === "web") {
 		return [] as RecurrenceDatabase[];
@@ -533,12 +655,19 @@ export async function listRecorrencias(params?: RecurrenceVisibilityParams) {
 		`
       SELECT
         r.*,
-        COUNT(CASE WHEN t.deleted = 0 THEN rt.id_transacao END) AS active_transactions_count
+        COUNT(CASE WHEN t.deleted = 0 THEN rt.id_transacao END) AS active_transactions_count,
+        json_extract(r.template_json, '$.valor')       AS valor,
+        json_extract(r.template_json, '$.pessoa')      AS pessoa,
+        json_extract(r.template_json, '$.observacao')  AS observacao,
+        json_extract(r.template_json, '$.json')        AS json,
+        cc.nome                                         AS categoria
       FROM recorrencias r
       LEFT JOIN recorrencia_transacoes rt
         ON rt.id_recurrencia = r.id_recurrencia
       LEFT JOIN transacoes t
         ON t.id_transacao = rt.id_transacao
+      LEFT JOIN categoria_catalogo cc
+        ON cc.id = json_extract(r.template_json, '$.id_categoria')
       WHERE r.deleted = 0
         AND ${sqlVisibility.where}
       GROUP BY r.id_recurrencia
@@ -556,7 +685,9 @@ export async function pauseRecorrencia(uuid: string) {
 		`
       UPDATE recorrencias
       SET status = 'pausada',
-          updated_at = ?
+          updated_at = ?,
+          sync_status = 'pending',
+          synced = 0
       WHERE uuid = ?
         AND deleted = 0
     `,
@@ -572,7 +703,9 @@ export async function activateRecorrencia(uuid: string) {
 		`
       UPDATE recorrencias
       SET status = 'ativa',
-          updated_at = ?
+          updated_at = ?,
+          sync_status = 'pending',
+          synced = 0
       WHERE uuid = ?
         AND deleted = 0
     `,
@@ -588,7 +721,9 @@ export async function deleteRecorrencia(uuid: string) {
 		`
       UPDATE recorrencias
       SET deleted = 1,
-          updated_at = ?
+          updated_at = ?,
+          sync_status = 'pending',
+          synced = 0
       WHERE uuid = ?
         AND deleted = 0
     `,
@@ -596,4 +731,214 @@ export async function deleteRecorrencia(uuid: string) {
 		uuid
 	);
 	return { deleted: true };
+}
+
+export async function getRecorrenciaByUuid(uuid: string) {
+	if (!db || Platform.OS === "web") return null;
+
+	const row = await db.getFirstAsync<any>(
+		`
+      SELECT
+        r.*,
+        cc.nome AS categoria
+      FROM recorrencias r
+      LEFT JOIN categoria_catalogo cc
+        ON cc.id = json_extract(r.template_json, '$.id_categoria')
+      WHERE r.uuid = ?
+        AND r.deleted = 0
+      LIMIT 1
+    `,
+		uuid
+	);
+	if (!row) return null;
+
+	let template: any = {};
+	try {
+		template = row.template_json ? JSON.parse(row.template_json) : {};
+	} catch {}
+
+	return { ...row, template };
+}
+
+export async function materializeRecurrenceOccurrence(params: {
+	recurrenceUuid: string;
+	dueDate: string;
+	overrides?: Record<string, any> | null;
+	status?: "pendente" | "pago";
+	dataBaixa?: string | null;
+	deleted?: boolean;
+}) {
+	if (!db || Platform.OS === "web") {
+		throw new Error("Recorrencia disponivel somente no banco local no app movel");
+	}
+
+	const recurrence = await loadRecurrenceByUuid(params.recurrenceUuid);
+	if (!recurrence) throw new Error("Recorrencia nao encontrada");
+
+	const existing = await db.getFirstAsync<{ id_transacao: number }>(
+		`
+      SELECT id_transacao
+      FROM recorrencia_transacoes
+      WHERE id_recurrencia = ?
+        AND due_date = ?
+      LIMIT 1
+    `,
+		recurrence.id_recurrencia,
+		params.dueDate
+	);
+	if (existing) {
+		return { id_transacao: Number(existing.id_transacao), alreadyExisted: true };
+	}
+
+	let template: any = {};
+	try {
+		template = recurrence.template_json ? JSON.parse(recurrence.template_json) : {};
+	} catch {}
+
+	const shouldSkip = Number(recurrence.skip_non_working ?? 0) === 1;
+	const skipDir = (recurrence.skip_direction ?? "after") as "before" | "after";
+	const defaultDueDate = shouldSkip ? adjustForNonWorking(params.dueDate, skipDir) : params.dueDate;
+
+	const o = params.overrides ?? {};
+	const pick = (key: string, fallback: any = null) =>
+		o[key] !== undefined ? o[key] : template[key] ?? fallback;
+
+	const dataVencimento = o.data_vencimento ?? defaultDueDate;
+	const status = params.status ?? "pendente";
+	const dataBaixa = status === "pago" ? params.dataBaixa ?? toISODate(new Date()) : null;
+
+	const insertResult = await db.runAsync(
+		`
+      INSERT INTO transacoes (
+        remote_id,
+        tipo,
+        valor,
+        id_categoria,
+        id_pessoa,
+        pessoa,
+        id_imobilizado,
+        id_banco,
+        family_id,
+        is_family_shared,
+        user_id,
+        data_transacao,
+        data_vencimento,
+        data_baixa,
+        status,
+        observacao,
+        json,
+        created_at,
+        updated_at,
+        data_sync,
+        sync_status,
+        synced,
+        deleted
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+		null,
+		pick("tipo", "pagar"),
+		Number(pick("valor", 0) || 0),
+		pick("id_categoria"),
+		pick("id_pessoa"),
+		pick("pessoa"),
+		pick("id_imobilizado"),
+		o.id_banco ?? null,
+		o.family_id !== undefined ? o.family_id : template.family_id ?? recurrence.family_id ?? null,
+		Number(
+			o.is_family_shared !== undefined
+				? o.is_family_shared
+				: template.is_family_shared ?? recurrence.is_family_shared ?? 0
+		),
+		template.user_id ?? recurrence.user_id ?? null,
+		atNoonISO(dataVencimento),
+		dataVencimento,
+		dataBaixa,
+		status,
+		pick("observacao"),
+		pick("json"),
+		nowISO(),
+		nowISO(),
+		null,
+		"pending",
+		0,
+		params.deleted ? 1 : 0
+	);
+	const transacaoId = Number(insertResult.lastInsertRowId);
+
+	const seqRow = await db.getFirstAsync<{ seq: number }>(
+		`SELECT COALESCE(MAX(sequence), 0) + 1 AS seq FROM recorrencia_transacoes WHERE id_recurrencia = ?`,
+		recurrence.id_recurrencia
+	);
+	const sequence = Number(seqRow?.seq ?? 1);
+
+	const linkResult = await db.runAsync(
+		`
+      INSERT OR IGNORE INTO recorrencia_transacoes (
+        id_recurrencia,
+        id_transacao,
+        due_date,
+        sequence,
+        created_at
+      ) VALUES (?, ?, ?, ?, ?)
+    `,
+		recurrence.id_recurrencia,
+		transacaoId,
+		params.dueDate,
+		sequence,
+		nowISO()
+	);
+
+	if (Number(linkResult.changes ?? 0) === 0) {
+		await db.runAsync(`DELETE FROM transacoes WHERE id_transacao = ?`, transacaoId);
+		const winner = await db.getFirstAsync<{ id_transacao: number }>(
+			`
+        SELECT id_transacao
+        FROM recorrencia_transacoes
+        WHERE id_recurrencia = ?
+          AND due_date = ?
+        LIMIT 1
+      `,
+			recurrence.id_recurrencia,
+			params.dueDate
+		);
+		return { id_transacao: Number(winner?.id_transacao ?? 0) || null, alreadyExisted: true };
+	}
+
+	await db.runAsync(
+		`
+      UPDATE recorrencias
+      SET occurrences_count = MAX(occurrences_count, ?),
+          updated_at = ?,
+          sync_status = 'pending',
+          synced = 0
+      WHERE id_recurrencia = ?
+    `,
+		sequence,
+		nowISO(),
+		recurrence.id_recurrencia
+	);
+
+	return { id_transacao: transacaoId, alreadyExisted: false };
+}
+
+export async function deleteRecorrenciaWithTransacoes(uuid: string) {
+	if (!db || Platform.OS === "web") return { deleted: false };
+	await db.runAsync(
+		`
+      UPDATE transacoes
+      SET deleted = 1,
+          updated_at = ?,
+          sync_status = 'pending',
+          synced = 0
+      WHERE id_transacao IN (
+        SELECT rt.id_transacao
+        FROM recorrencia_transacoes rt
+        JOIN recorrencias r ON r.id_recurrencia = rt.id_recurrencia
+        WHERE r.uuid = ? AND r.deleted = 0
+      ) AND deleted = 0
+    `,
+		nowISO(),
+		uuid
+	);
+	return deleteRecorrencia(uuid);
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
@@ -25,6 +25,9 @@ export function useInsertForm() {
 		createTransacao,
 		createRecurringTransacoes,
 		updateTransacao,
+		applyEditToRecurrenceTransacoes,
+		materializeRecurrenceOccurrence,
+		getRecorrenciaByUuid,
 		getTransacao,
 		findPessoaByName,
 		listBancos,
@@ -42,6 +45,8 @@ export function useInsertForm() {
 	const [recurrenceMeta, setRecurrenceMeta] = useState(null);
 	const [selectedCatalogBanco, setSelectedCatalogBanco] = useState(null);
 	const [categories, setCategories] = useState([]);
+	const [recurringEditModalOpen, setRecurringEditModalOpen] = useState(false);
+	const [pendingFormData, setPendingFormData] = useState(null);
 
 	const editId = useMemo(() => {
 		const raw = Array.isArray(params?.id_transacao)
@@ -55,6 +60,29 @@ export function useInsertForm() {
 		const v = Array.isArray(params?.from) ? params.from[0] : params?.from;
 		return v === "launches" ? "launches" : null;
 	}, [params?.from]);
+
+	const ghostRecurrenceUuid = useMemo(() => {
+		const v = Array.isArray(params?.ghost_recurrence_uuid)
+			? params.ghost_recurrence_uuid[0]
+			: params?.ghost_recurrence_uuid;
+		return typeof v === "string" && v.trim() ? v.trim() : null;
+	}, [params?.ghost_recurrence_uuid]);
+
+	const ghostDueDate = useMemo(() => {
+		const v = Array.isArray(params?.ghost_due_date)
+			? params.ghost_due_date[0]
+			: params?.ghost_due_date;
+		return normalizeDate(v);
+	}, [params?.ghost_due_date]);
+
+	const ghostDataVencimento = useMemo(() => {
+		const v = Array.isArray(params?.ghost_data_vencimento)
+			? params.ghost_data_vencimento[0]
+			: params?.ghost_data_vencimento;
+		return normalizeDate(v);
+	}, [params?.ghost_data_vencimento]);
+
+	const ghostMode = Boolean(ghostRecurrenceUuid && ghostDueDate && !editId);
 
 	const tipoParam = useMemo(() => {
 		const v = Array.isArray(params?.tipo) ? params.tipo[0] : params?.tipo;
@@ -74,6 +102,11 @@ export function useInsertForm() {
 			: params?.data_vencimento;
 		return normalizeDate(v);
 	}, [params?.data_vencimento]);
+
+	const recurrenceModeParam = useMemo(() => {
+		const v = Array.isArray(params?.recurrence_mode) ? params.recurrence_mode[0] : params?.recurrence_mode;
+		return v === "recorrente" ? "recorrente" : null;
+	}, [params?.recurrence_mode]);
 
 	const form = useForm({
 		resolver: yupResolver(insertSchema),
@@ -196,11 +229,67 @@ export function useInsertForm() {
 	}, [editId, getTransacao, reset, router, showNewToast]);
 
 	useEffect(() => {
-		if (editId) return;
+		if (!ghostMode) return;
+		async function loadGhost() {
+			try {
+				setIsLoading(true);
+				const rec = await getRecorrenciaByUuid(ghostRecurrenceUuid);
+				if (!rec) {
+					showNewToast("warning", "Recorrência não encontrada.", "Atenção");
+					router.replace(fromParam === "launches" ? "/(auth)/(tabs)/launches" : "/");
+					return;
+				}
+				const template = rec.template ?? {};
+				let descricao = "";
+				try {
+					descricao = JSON.parse(template.json)?.descricao ?? "";
+				} catch {}
+				reset({
+					tipo: template.tipo ?? "pagar",
+					status: "pendente",
+					recurrence_mode: "unica",
+					recurrence_frequency: "mensal",
+					recurrence_end_date: "",
+					recurrence_skip_non_working: false,
+					recurrence_skip_direction: "",
+					descricao,
+					valor: formatValueForInput(template.valor),
+					categoria: rec.categoria ?? "",
+					pessoa: template.pessoa ?? "",
+					data_vencimento: ghostDataVencimento ?? ghostDueDate ?? "",
+					data_baixa: "",
+					observacao: template.observacao ?? "",
+					share_with_family:
+						Number(template.is_family_shared ?? rec.is_family_shared ?? 0) === 1,
+					id_banco: null,
+				});
+				setIsFromRecurrence(true);
+				setRecurrenceMeta({
+					recurrence_uuid: rec.uuid,
+					recurrence_frequency: rec.frequency,
+					recurrence_sequence: null,
+				});
+			} catch (error) {
+				showNewToast(
+					"error",
+					String(error || "Falha ao carregar lançamento"),
+					"Erro"
+				);
+				router.replace(fromParam === "launches" ? "/(auth)/(tabs)/launches" : "/");
+			} finally {
+				setIsLoading(false);
+			}
+		}
+		loadGhost();
+	}, [fromParam, getRecorrenciaByUuid, ghostDataVencimento, ghostDueDate, ghostMode, ghostRecurrenceUuid, reset, router, showNewToast]);
+
+	useEffect(() => {
+		if (editId || ghostMode) return;
 		if (tipoParam) setValue("tipo", tipoParam, { shouldDirty: false, shouldTouch: false });
 		if (categoriaParam) setValue("categoria", categoriaParam, { shouldDirty: false, shouldTouch: false });
 		if (dataVencimentoParam) setValue("data_vencimento", dataVencimentoParam, { shouldDirty: false, shouldTouch: false });
-	}, [categoriaParam, dataVencimentoParam, editId, setValue, tipoParam]);
+		if (recurrenceModeParam) setValue("recurrence_mode", recurrenceModeParam, { shouldDirty: false, shouldTouch: false });
+	}, [categoriaParam, dataVencimentoParam, editId, recurrenceModeParam, setValue, tipoParam]);
 
 	useEffect(() => {
 		return navigation.addListener("beforeRemove", (event) => {
@@ -224,7 +313,7 @@ export function useInsertForm() {
 		setSelectedCatalogBanco(catalogItem);
 	};
 
-	const handleSave = async (data) => {
+	const executeSave = useCallback(async (data, recurringScope) => {
 		startSaving();
 		setIsSaving(true);
 		try {
@@ -242,7 +331,6 @@ export function useInsertForm() {
 					: (await createBanco(selectedCatalogBanco.nome, selectedCatalogBanco.cor_hex ?? "#6B7280", { userId: userData?.id ?? null })).id_banco;
 			}
 
-			// Resolve id_categoria a partir do nome selecionado no form
 			const id_categoria = categories.find((c) => c.nome === data.categoria)?.id ?? null;
 
 			const payload = {
@@ -255,7 +343,6 @@ export function useInsertForm() {
 				id_banco: resolvedBancoId,
 				family_id: data.share_with_family && family?.id ? Number(family.id) : null,
 				is_family_shared: data.share_with_family && family?.id ? 1 : 0,
-				// Ao editar, não sobrescreve o user_id — preserva o dono original
 				user_id: editId ? null : (userData?.id ?? null),
 				data_transacao: new Date().toISOString(),
 				data_vencimento: normalizeDate(data.data_vencimento),
@@ -267,8 +354,38 @@ export function useInsertForm() {
 
 			let savedId = null;
 			let successMessage = "Lançamento salvo!";
-			if (editId) {
+			if (ghostMode) {
+				const result = await materializeRecurrenceOccurrence({
+					recurrenceUuid: ghostRecurrenceUuid,
+					dueDate: ghostDueDate,
+					overrides: payload,
+					status: payload.status,
+					dataBaixa: payload.data_baixa,
+				});
+				savedId = result?.id_transacao ?? null;
+			} else if (editId) {
 				await updateTransacao(editId, payload);
+				if (recurringScope && recurringScope !== "only_this" && recurrenceMeta?.recurrence_uuid) {
+					await applyEditToRecurrenceTransacoes({
+						recurrenceUuid: recurrenceMeta.recurrence_uuid,
+						currentTransacaoId: editId,
+						scope: recurringScope,
+						templatePayload: {
+							tipo: payload.tipo,
+							valor: payload.valor,
+							id_categoria: payload.id_categoria,
+							id_pessoa: payload.id_pessoa,
+							pessoa: payload.pessoa,
+							id_imobilizado: payload.id_imobilizado,
+							id_banco: payload.id_banco,
+							family_id: payload.family_id,
+							is_family_shared: payload.is_family_shared,
+							observacao: payload.observacao,
+							json: payload.json,
+							user_id: userData?.id ?? null,
+						},
+					});
+				}
 				savedId = editId;
 				successMessage = "Lançamento atualizado!";
 			} else if (data.recurrence_mode === "recorrente") {
@@ -308,11 +425,51 @@ export function useInsertForm() {
 			showError(String(error || "Não foi possível salvar o lançamento."));
 			setIsSaving(false);
 		}
-	};
+	}, [
+		applyEditToRecurrenceTransacoes,
+		categories,
+		createBanco,
+		createRecurringTransacoes,
+		createTransacao,
+		editId,
+		family?.id,
+		findPessoaByName,
+		fromParam,
+		ghostDueDate,
+		ghostMode,
+		ghostRecurrenceUuid,
+		listBancos,
+		materializeRecurrenceOccurrence,
+		recurrenceMeta,
+		router,
+		selectedCatalogBanco,
+		showError,
+		showSuccess,
+		startSaving,
+		updateTransacao,
+		userData?.id,
+	]);
+
+	const handleSave = useCallback(async (data) => {
+		if (editId && isFromRecurrence) {
+			setPendingFormData(data);
+			setRecurringEditModalOpen(true);
+			return;
+		}
+		await executeSave(data, null);
+	}, [editId, isFromRecurrence, executeSave]);
+
+	const handleRecurringEditScope = useCallback(async (scope) => {
+		setRecurringEditModalOpen(false);
+		if (!pendingFormData) return;
+		const data = pendingFormData;
+		setPendingFormData(null);
+		await executeSave(data, scope);
+	}, [pendingFormData, executeSave]);
 
 	return {
 		form,
-		isEditMode: !!editId,
+		isEditMode: !!editId || ghostMode,
 		isSaving,
 		isLoading,
 		isBooting,
@@ -328,5 +485,8 @@ export function useInsertForm() {
 		selectedCatalogBanco,
 		handleBancoSelect,
 		categories,
+		recurringEditModalOpen,
+		onCloseRecurringEditModal: () => setRecurringEditModalOpen(false),
+		handleRecurringEditScope,
 	};
 }

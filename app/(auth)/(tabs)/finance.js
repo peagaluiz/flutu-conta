@@ -109,8 +109,15 @@ export default function Finance() {
 			}
 		});
 
+		const ghostPendentes = filteredItems.filter(
+			(item) => item.is_ghost && item.status !== "pago"
+		).length;
+
 		const base = buildResumoGeral(filteredItems);
-		return { ...finalizeResumo(base, saldoInicial), pendentes: pendentesTotal };
+		return {
+			...finalizeResumo(base, saldoInicial),
+			pendentes: pendentesTotal + ghostPendentes,
+		};
 	}, [filteredItems, allScopedItems, dateRange.start, dateRange.end]);
 	const categorySeries = useMemo(
 		() => buildCategoryExpenses(filteredItems, 6),
@@ -131,6 +138,10 @@ export default function Finance() {
 		(item) => {
 			if (!item?.id_transacao) return;
 			setDetailSheetOpen(false);
+			if (item.is_ghost) {
+				router.push("/(auth)/(tabs)/launches");
+				return;
+			}
 			router.push({
 				pathname: "/(auth)/(tabs)/launches",
 				params: {
@@ -254,19 +265,22 @@ export default function Finance() {
 								}
 								onPressPendentes={() => {
 									const dateToStr = dateRange.end ? String(dateRange.end).slice(0, 10) : null;
-									openDetails(
-										"Pendentes",
-										normalizeTransactions(allScopedItems, {
-											familyId: activeFamilyId,
-										}).filter((item) => {
-											if (item.status === "pago") return false;
-											if (dateToStr) {
-												const venc = item.data_vencimento ? String(item.data_vencimento).slice(0, 10) : null;
-												if (venc && venc > dateToStr) return false;
-											}
-											return true;
-										})
-									);
+									const pendentes = normalizeTransactions(allScopedItems, {
+										familyId: activeFamilyId,
+									}).filter((item) => {
+										if (item.status === "pago") return false;
+										if (dateToStr) {
+											const venc = item.data_vencimento ? String(item.data_vencimento).slice(0, 10) : null;
+											if (venc && venc > dateToStr) return false;
+										}
+										return true;
+									});
+									openDetails("Pendentes", [
+										...pendentes,
+										...filteredItems.filter(
+											(item) => item.is_ghost && item.status !== "pago"
+										),
+									]);
 								}}
 							/>
 							<FinanceMonthlyChartSection

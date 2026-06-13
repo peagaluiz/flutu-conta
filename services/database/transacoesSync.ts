@@ -20,6 +20,7 @@ export type SyncSummary = {
 		transacoes: { processed: number; synced: number; errors: number };
 		banco: { processed: number; synced: number; errors: number };
 		recorrencias: { processed: number; synced: number; errors: number };
+		recorrencia_transacoes: { processed: number; synced: number; errors: number };
 	};
 };
 
@@ -39,6 +40,7 @@ function createEmptySummary(): SyncSummary {
 			transacoes: emptyTableSummary(),
 			banco: emptyTableSummary(),
 			recorrencias: emptyTableSummary(),
+			recorrencia_transacoes: emptyTableSummary(),
 		},
 	};
 }
@@ -71,6 +73,10 @@ function mergeSummary(target: SyncSummary, source: SyncSummary) {
 	target.tables.recorrencias.processed += source.tables.recorrencias.processed;
 	target.tables.recorrencias.synced += source.tables.recorrencias.synced;
 	target.tables.recorrencias.errors += source.tables.recorrencias.errors;
+
+	target.tables.recorrencia_transacoes.processed += source.tables.recorrencia_transacoes.processed;
+	target.tables.recorrencia_transacoes.synced += source.tables.recorrencia_transacoes.synced;
+	target.tables.recorrencia_transacoes.errors += source.tables.recorrencia_transacoes.errors;
 }
 
 async function getAuthUserId() {
@@ -138,6 +144,19 @@ async function backfillLocalOwnershipIfMissing() {
     `,
 		userId,
 		dataSync
+	);
+
+	await db.runAsync(
+		`
+      UPDATE recorrencias
+      SET user_id = ?,
+          sync_status = 'pending',
+          synced = 0
+      WHERE deleted = 0
+        AND user_id IS NULL
+        AND family_id IS NULL
+    `,
+		userId
 	);
 }
 
@@ -1066,7 +1085,7 @@ async function syncPendingRecorrencias(summary: SyncSummary) {
 	const pendingRows = await db.getAllAsync<any>(
 		`SELECT * FROM recorrencias
          WHERE deleted = 0
-           AND sync_status = 'pending'
+           AND (sync_status = 'pending' OR sync_status = 'error' OR synced = 0)
            AND user_id = ?
          ORDER BY id_recurrencia ASC
          LIMIT 100`,
@@ -1127,7 +1146,8 @@ async function syncPendingRecorrencias(summary: SyncSummary) {
 			);
 			summary.tables.recorrencias.synced += 1;
 			summary.synced += 1;
-		} catch {
+		} catch (error) {
+			console.warn("[syncRecorrencias] erro", row?.id_recurrencia, error);
 			summary.tables.recorrencias.errors += 1;
 			summary.errors += 1;
 			await db.runAsync(
@@ -1142,7 +1162,7 @@ async function syncPendingRecorrencias(summary: SyncSummary) {
 		`SELECT * FROM recorrencias
          WHERE deleted = 1
            AND remote_id IS NOT NULL
-           AND sync_status = 'pending'
+           AND (sync_status = 'pending' OR sync_status = 'error' OR synced = 0)
            AND user_id = ?
          LIMIT 50`,
 		userId
@@ -1161,6 +1181,60 @@ async function syncPendingRecorrencias(summary: SyncSummary) {
 				);
 			}
 		} catch {}
+	}
+}
+
+async function syncPendingRecorrenciaTransacoes(summary: SyncSummary) {
+	if (!db || Platform.OS === "web") return;
+	const userId = await getAuthUserId();
+	if (!userId) return;
+
+	const pendingRows = await db.getAllAsync<any>(
+		`SELECT rt.*,
+		        r.remote_id AS recorrencia_remote_id,
+		        t.remote_id AS transacao_remote_id
+		 FROM recorrencia_transacoes rt
+		 JOIN recorrencias r ON r.id_recurrencia = rt.id_recurrencia
+		 JOIN transacoes t   ON t.id_transacao = rt.id_transacao
+		 WHERE rt.synced = 0
+		   AND r.deleted = 0
+		   AND t.deleted = 0
+		   AND r.remote_id IS NOT NULL
+		   AND t.remote_id IS NOT NULL
+		   AND r.user_id = ?
+		 LIMIT 200`,
+		userId
+	);
+
+	for (const row of pendingRows ?? []) {
+		summary.tables.recorrencia_transacoes.processed += 1;
+		summary.processed += 1;
+		try {
+			const payload = {
+				id_recurrencia: row.recorrencia_remote_id,
+				id_transacao: row.transacao_remote_id,
+				due_date: row.due_date,
+				sequence: Number(row.sequence),
+				created_at: row.created_at,
+			};
+
+			const { error } = await supabase
+				.from("recorrencia_transacoes")
+				.upsert(payload, { onConflict: "id_recurrencia,due_date" });
+
+			if (error) throw error;
+
+			await db.runAsync(
+				`UPDATE recorrencia_transacoes SET synced = 1 WHERE id_recurrencia_transacao = ?`,
+				row.id_recurrencia_transacao
+			);
+			summary.tables.recorrencia_transacoes.synced += 1;
+			summary.synced += 1;
+		} catch (error) {
+			console.warn("[syncRecorrenciaTransacoes] erro", row?.id_recurrencia_transacao, error);
+			summary.tables.recorrencia_transacoes.errors += 1;
+			summary.errors += 1;
+		}
 	}
 }
 
@@ -1220,6 +1294,9 @@ async function syncAllPendingInternal(onProgress?: (step: string) => void) {
 
 	onProgress?.("Enviando recorrências...");
 	await syncPendingRecorrencias(full);
+
+	onProgress?.("Enviando vínculos de recorrência...");
+	await syncPendingRecorrenciaTransacoes(full);
 
 	return full;
 }

@@ -103,6 +103,7 @@ export default function Launches() {
 		darBaixaBulk,
 		removerBaixaBulk,
 		deleteItemsBulk,
+		deleteRecorrenciaScope,
 	} = useLaunchesData({ database, section, family, userData, filters: activeFilters });
 
 	const {
@@ -151,13 +152,14 @@ export default function Launches() {
 
 	const handleLongPress = useCallback(
 		(item) => {
-			if (section !== "transacoes") return;
+			if (section !== "transacoes" || item?.is_ghost) return;
 			setSelectedIds(new Set([item.id_transacao]));
 		},
 		[section]
 	);
 
 	const handleToggleSelect = useCallback((item) => {
+		if (item?.is_ghost) return;
 		setSelectedIds((prev) => {
 			const next = new Set(prev);
 			if (next.has(item.id_transacao)) {
@@ -263,7 +265,7 @@ export default function Launches() {
 						item={item}
 						colors={colors}
 						onToggleStatus={() => toggleRecorrenciaStatus(item)}
-						onDelete={() => deleteItem(item)}
+						onDelete={(withTransacoes) => deleteRecorrenciaScope(item, withTransacoes)}
 					/>
 				);
 			}

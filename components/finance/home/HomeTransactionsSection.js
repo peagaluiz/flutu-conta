@@ -6,22 +6,14 @@ import { Box } from "@/components/ui/box";
 import { HStack } from "@/components/ui/hstack";
 import { Text } from "@/components/ui/text";
 import { Pressable } from "@/components/ui/pressable";
-import { Divider } from "@/components/ui/divider";
 import Loader from "@/components/ui/loader";
 import { DatePickerDialog } from "@/components/ui/DatePickerDialog";
+import { ActionListModal } from "@/components/ui/ActionListModal";
 import { useTheme } from "@/components/ui/gluestack-ui-provider/ThemeProvider/ThemeProvider";
 import { getThemeColors } from "@/constants/colors";
 import { toISODateString } from "@/utils/finance/helpers";
 import { LancamentoListItem } from "@/components/finance/home/LancamentoListItem";
-import {
-	Modal,
-	ModalBackdrop,
-	ModalContent,
-	ModalHeader,
-	ModalBody,
-	ModalFooter,
-} from "@/components/ui/modal";
-import { Button, ButtonText } from "@/components/ui/button";
+import { LancamentoSummary } from "@/components/finance/home/LancamentoSummary";
 
 export function HomeTransactionsSection({
 	loading,
@@ -112,8 +104,8 @@ export function HomeTransactionsSection({
 						<LancamentoListItem
 							key={String(item.id_transacao)}
 							item={item}
-							onPress={() => onPressItem(item)}
-							onLongPress={() => setMenuItem(item)}
+							onPress={() => setMenuItem(item)}
+							onLongPress={undefined}
 						/>
 					))}
 
@@ -142,72 +134,19 @@ export function HomeTransactionsSection({
 				</Box>
 			)}
 
-			<Modal isOpen={!!menuItem} onClose={closeMenu} size="md">
-				<ModalBackdrop />
-				<ModalContent>
-					<ModalHeader>
-						<Text
-							className="text-lg font-semibold"
-							style={{ color: colors.textPrimary }}
-							numberOfLines={1}
-						>
-							{menuItem?.pessoa || menuItem?.categoria || "Lançamento"}
-						</Text>
-					</ModalHeader>
-					<ModalBody className="gap-1">
-						<Pressable
-							onPress={handleEditar}
-							className="flex-row items-center gap-3 py-3 px-1 rounded-lg"
-						>
-							<Pencil size={20} color={colors.textPrimary} />
-							<Text style={{ color: colors.textPrimary }} className="text-base">
-								Editar
-							</Text>
-						</Pressable>
-
-						<Divider style={{ backgroundColor: colors.border }} />
-
-						{menuItem?.status !== "pago" ? (
-							<Pressable
-								onPress={handleAbrirBaixa}
-								className="flex-row items-center gap-3 py-3 px-1 rounded-lg"
-							>
-								<CheckCircle size={20} color={colors.textPrimary} />
-								<Text style={{ color: colors.textPrimary }} className="text-base">
-									Dar baixa
-								</Text>
-							</Pressable>
-						) : (
-							<Pressable
-								onPress={handleRemoverBaixaPress}
-								className="flex-row items-center gap-3 py-3 px-1 rounded-lg"
-							>
-								<XCircle size={20} color={colors.textPrimary} />
-								<Text style={{ color: colors.textPrimary }} className="text-base">
-									Remover baixa
-								</Text>
-							</Pressable>
-						)}
-
-						<Divider style={{ backgroundColor: colors.border }} />
-
-						<Pressable
-							onPress={handleExcluir}
-							className="flex-row items-center gap-3 py-3 px-1 rounded-lg"
-						>
-							<Trash2 size={20} color={colors.dangerText} />
-							<Text style={{ color: colors.dangerText }} className="text-base">
-								Excluir
-							</Text>
-						</Pressable>
-					</ModalBody>
-					<ModalFooter>
-						<Button action="secondary" variant="outline" onPress={closeMenu}>
-							<ButtonText>Cancelar</ButtonText>
-						</Button>
-					</ModalFooter>
-				</ModalContent>
-			</Modal>
+			<ActionListModal
+				isOpen={!!menuItem}
+				onClose={closeMenu}
+				title="Ações rápidas"
+				items={[
+					{ render: () => <LancamentoSummary item={menuItem} /> },
+					{ label: "Editar", icon: Pencil, onPress: handleEditar },
+					menuItem?.status !== "pago"
+						? { label: "Dar baixa", icon: CheckCircle, onPress: handleAbrirBaixa }
+						: { label: "Remover baixa", icon: XCircle, onPress: handleRemoverBaixaPress },
+					{ label: "Excluir", icon: Trash2, color: colors.dangerText, onPress: handleExcluir },
+				]}
+			/>
 
 			<DatePickerDialog
 				visible={showDatePicker}

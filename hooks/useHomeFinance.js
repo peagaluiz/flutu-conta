@@ -140,7 +140,15 @@ export function useHomeFinance() {
 
 	const handleDeleteItem = useCallback(
 		async (item) => {
-			await database.deleteTransacao(item.id_transacao);
+			if (item?.is_ghost) {
+				await database.materializeRecurrenceOccurrence({
+					recurrenceUuid: item.recurrence_uuid,
+					dueDate: item.ghost_due_date,
+					deleted: true,
+				});
+			} else {
+				await database.deleteTransacao(item.id_transacao);
+			}
 			await reload();
 		},
 		[database, reload]
@@ -148,7 +156,16 @@ export function useHomeFinance() {
 
 	const handleDarBaixa = useCallback(
 		async (item, dataBaixa) => {
-			await database.darBaixa(item.id_transacao, dataBaixa);
+			if (item?.is_ghost) {
+				await database.materializeRecurrenceOccurrence({
+					recurrenceUuid: item.recurrence_uuid,
+					dueDate: item.ghost_due_date,
+					status: "pago",
+					dataBaixa: dataBaixa ?? null,
+				});
+			} else {
+				await database.darBaixa(item.id_transacao, dataBaixa);
+			}
 			await reload();
 		},
 		[database, reload]
@@ -176,6 +193,17 @@ export function useHomeFinance() {
 
 	const handlePressItem = useCallback(
 		(item) => {
+			if (item?.is_ghost) {
+				router.replace({
+					pathname: "/(auth)/(stack)/insert",
+					params: {
+						ghost_recurrence_uuid: String(item.recurrence_uuid),
+						ghost_due_date: String(item.ghost_due_date),
+						ghost_data_vencimento: String(item.data_vencimento || ""),
+					},
+				});
+				return;
+			}
 			router.replace({
 				pathname: "/(auth)/(stack)/insert",
 				params: { id_transacao: String(item.id_transacao) },
@@ -206,7 +234,13 @@ export function useHomeFinance() {
 		dateRange.start !== defaultRange.start || dateRange.end !== defaultRange.end;
 
 	const resumo = useMemo(
-		() => calculateResumo(lancamentos, allLancamentos, dateRange.start, dateRange.end),
+		() =>
+			calculateResumo(
+				lancamentos,
+				[...allLancamentos, ...lancamentos.filter((item) => item.is_ghost)],
+				dateRange.start,
+				dateRange.end
+			),
 		[lancamentos, allLancamentos, dateRange.start, dateRange.end]
 	);
 

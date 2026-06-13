@@ -217,6 +217,8 @@ export async function initializeSQLite(database: SQLiteDatabase) {
 	await safeAddColumn("ALTER TABLE recorrencias ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'pending';");
 	await safeAddColumn("ALTER TABLE recorrencias ADD COLUMN synced INTEGER NOT NULL DEFAULT 0;");
 
+	await safeAddColumn("ALTER TABLE recorrencia_transacoes ADD COLUMN synced INTEGER NOT NULL DEFAULT 0;");
+
 	await database.execAsync("DROP INDEX IF EXISTS idx_recorrencia_transacoes_recurrencia;");
 
 	await database.execAsync("CREATE INDEX IF NOT EXISTS idx_transacoes_sync           ON transacoes(sync_status, synced);");
