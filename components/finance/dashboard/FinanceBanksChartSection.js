@@ -1,4 +1,5 @@
 import React from "react";
+import { CreditCard, Landmark } from "lucide-react-native";
 import { Box } from "@/components/ui/box";
 import { HStack } from "@/components/ui/hstack";
 import { VStack } from "@/components/ui/vstack";
@@ -70,7 +71,73 @@ function BankMetricBar({ bank, metric, maxValue, colors, onPressDetail }) {
 	);
 }
 
+function BankBox({ bank, maxValue, colors, onPressDetail }) {
+	const isCartao = bank.kind === "cartao";
+	return (
+		<Box
+			className="rounded-xl border p-3"
+			style={{ backgroundColor: colors.surfaceMuted, borderColor: colors.border }}
+		>
+			<HStack className="mb-3 items-center gap-2">
+				<Box
+					className="rounded-full"
+					style={{ width: 10, height: 10, backgroundColor: bank.cor_hex }}
+				/>
+				<Text className="text-sm font-semibold" style={{ color: colors.textPrimary }}>
+					{bank.nome}
+				</Text>
+				{isCartao ? (
+					<Box className="rounded-full px-2 py-0.5" style={{ backgroundColor: "rgba(245,158,11,0.15)" }}>
+						<Text className="text-[10px] font-semibold" style={{ color: "#F59E0B" }}>
+							CARTÃO
+						</Text>
+					</Box>
+				) : null}
+			</HStack>
+
+			<VStack className="gap-2.5">
+				{METRICS.map((metric) => (
+					<BankMetricBar
+						key={metric.key}
+						bank={bank}
+						metric={metric}
+						maxValue={maxValue}
+						colors={colors}
+						onPressDetail={onPressDetail}
+					/>
+				))}
+			</VStack>
+		</Box>
+	);
+}
+
+function BankSection({ title, Icon, iconColor, bankList, maxValue, colors, onPressDetail }) {
+	if (!bankList.length) return null;
+	return (
+		<VStack className="gap-3">
+			<HStack className="items-center gap-2">
+				<Icon size={16} color={iconColor} />
+				<Text className="text-xs font-semibold uppercase" style={{ color: colors.textSecondary }}>
+					{title}
+				</Text>
+			</HStack>
+			{bankList.map((bank) => (
+				<BankBox
+					key={`${bank.id_banco ?? "sem-banco"}:${bank.kind}`}
+					bank={bank}
+					maxValue={maxValue}
+					colors={colors}
+					onPressDetail={onPressDetail}
+				/>
+			))}
+		</VStack>
+	);
+}
+
 export function FinanceBanksChartSection({ banks, colors, onPressDetail }) {
+	const contas = banks.items.filter((b) => b.kind !== "cartao");
+	const cartoes = banks.items.filter((b) => b.kind === "cartao");
+
 	return (
 		<Box
 			className="rounded-xl border p-4"
@@ -80,7 +147,7 @@ export function FinanceBanksChartSection({ banks, colors, onPressDetail }) {
 				Por banco
 			</Text>
 			<Text className="mb-3 text-xs" style={{ color: colors.textSecondary }}>
-				Gastos, gastos futuros e recebidos por banco
+				Gastos, gastos futuros e recebidos por conta e cartão
 			</Text>
 
 			{!banks.items.length ? (
@@ -88,47 +155,25 @@ export function FinanceBanksChartSection({ banks, colors, onPressDetail }) {
 					Sem dados no periodo selecionado.
 				</Text>
 			) : (
-				<VStack className="gap-4">
-					{banks.items.map((bank) => (
-						<Box
-							key={String(bank.id_banco ?? "sem-banco")}
-							className="rounded-xl border p-3"
-							style={{
-								backgroundColor: colors.surfaceMuted,
-								borderColor: colors.border,
-							}}
-						>
-							<HStack className="mb-3 items-center gap-2">
-								<Box
-									className="rounded-full"
-									style={{
-										width: 10,
-										height: 10,
-										backgroundColor: bank.cor_hex,
-									}}
-								/>
-								<Text
-									className="text-sm font-semibold"
-									style={{ color: colors.textPrimary }}
-								>
-									{bank.nome}
-								</Text>
-							</HStack>
-
-							<VStack className="gap-2.5">
-								{METRICS.map((metric) => (
-									<BankMetricBar
-										key={metric.key}
-										bank={bank}
-										metric={metric}
-										maxValue={banks.maxValue}
-										colors={colors}
-										onPressDetail={onPressDetail}
-									/>
-								))}
-							</VStack>
-						</Box>
-					))}
+				<VStack className="gap-5">
+					<BankSection
+						title="Contas"
+						Icon={Landmark}
+						iconColor={colors.textSecondary}
+						bankList={contas}
+						maxValue={banks.maxValue}
+						colors={colors}
+						onPressDetail={onPressDetail}
+					/>
+					<BankSection
+						title="Cartões de crédito"
+						Icon={CreditCard}
+						iconColor="#F59E0B"
+						bankList={cartoes}
+						maxValue={banks.maxValue}
+						colors={colors}
+						onPressDetail={onPressDetail}
+					/>
 				</VStack>
 			)}
 		</Box>

@@ -48,6 +48,7 @@ export const insertSchema = yup.object().shape({
 	share_with_family: yup.boolean().default(false),
 	observacao: yup.string().nullable(),
 	id_banco: yup.number().nullable().optional(),
+	parcelas: yup.number().nullable().optional().default(1),
 });
 
 export function parseBrNumber(value) {

@@ -49,6 +49,14 @@ export default function StackLayout() {
 					animateTitle: true,
 				})}
 			/>
+			<Stack.Screen
+				name="ofx-import"
+				options={{
+					title: "Importar OFX",
+					headerLeft: () => <InsertBackButton isDarkMode={isDarkMode} />,
+					animateTitle: true,
+				}}
+			/>
 			<Stack.Screen name="view" options={{ title: "Detalhes" }} />
 			<Stack.Screen
 				name="family"

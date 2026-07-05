@@ -1,6 +1,7 @@
 import { createTransacoesRepository } from "@/services/database/transacoesRepository";
 import { createManageRepository } from "@/services/database/manageRepository";
 import { createBancoRepository } from "@/services/database/bancoRepository";
+import { createFaturaRepository } from "@/services/database/faturaRepository";
 import { createBancoCatalogoRepository } from "@/services/database/bancoCatalogoRepository";
 import { createCategoriaCatalogoRepository } from "@/services/database/categoriaCatalogoRepository";
 import { useMemo } from "react";
@@ -13,6 +14,7 @@ export function useDatabase() {
 			...createTransacoesRepository(),
 			...createManageRepository(),
 			...createBancoRepository(),
+			...createFaturaRepository(),
 			...createBancoCatalogoRepository(),
 			...createCategoriaCatalogoRepository(),
 		}),

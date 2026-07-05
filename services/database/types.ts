@@ -24,6 +24,10 @@ export type TransacaoDatabase = {
 	synced?: number;
 	deleted?: number;
 	json: string | null;
+	id_fatura?: number | null;
+	parcela_atual?: number | null;
+	parcela_total?: number | null;
+	ofx_fitid?: string | null;
 	is_from_recurrence?: number;
 	recurrence_uuid?: string | null;
 	recurrence_frequency?: string | null;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Alert } from "react-native";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
@@ -13,6 +14,7 @@ import {
 	parseBrNumber,
 	toISODate,
 } from "@/components/finance/insert/insertFormConfig";
+import { buildInstallmentPlan } from "@/services/database/cartaoCalc";
 
 export function useInsertForm() {
 	const router = useRouter();
@@ -34,6 +36,9 @@ export function useInsertForm() {
 		createBanco,
 		listCatalog,
 		listCategories,
+		createTransacoesParceladas,
+		getFaturaById,
+		recalcFaturaTotal,
 	} = useDatabase();
 
 	const [isSaving, setIsSaving] = useState(false);
@@ -44,6 +49,7 @@ export function useInsertForm() {
 	const [isFromRecurrence, setIsFromRecurrence] = useState(false);
 	const [recurrenceMeta, setRecurrenceMeta] = useState(null);
 	const [selectedCatalogBanco, setSelectedCatalogBanco] = useState(null);
+	const [editingFatura, setEditingFatura] = useState(null);
 	const [categories, setCategories] = useState([]);
 	const [recurringEditModalOpen, setRecurringEditModalOpen] = useState(false);
 	const [pendingFormData, setPendingFormData] = useState(null);
@@ -127,6 +133,7 @@ export function useInsertForm() {
 			observacao: "",
 			share_with_family: false,
 			id_banco: null,
+			parcelas: 1,
 		},
 	});
 
@@ -209,10 +216,20 @@ export function useInsertForm() {
 						const catalogItem = catalog.find(
 							(c) => c.nome.trim().toLowerCase() === userBanco.nome.trim().toLowerCase()
 						);
-						setSelectedCatalogBanco(
-							catalogItem ?? { id: null, nome: userBanco.nome, cor_hex: userBanco.cor_hex }
-						);
+						setSelectedCatalogBanco({
+							...userBanco,
+							side: t.id_fatura ? "cartao" : "corrente",
+							logo_url: catalogItem?.logo_url ?? null,
+							logo_local_path: catalogItem?.logo_local_path ?? null,
+						});
 					}
+				}
+
+				if (t.id_fatura) {
+					const fatura = await getFaturaById(Number(t.id_fatura)).catch(() => null);
+					setEditingFatura(fatura);
+				} else {
+					setEditingFatura(null);
 				}
 			} catch (error) {
 				showNewToast(
@@ -304,14 +321,17 @@ export function useInsertForm() {
 		});
 	}, [navigation, router, fromParam]);
 
-	const handleBancoSelect = (catalogItem) => {
-		if (!catalogItem) {
+	const handleBancoSelect = (banco) => {
+		if (!banco) {
 			setSelectedCatalogBanco(null);
 			setValue("id_banco", null);
 			return;
 		}
-		setSelectedCatalogBanco(catalogItem);
+		setSelectedCatalogBanco(banco);
+		setValue("id_banco", banco.id_banco ?? null);
 	};
+
+	const isCartao = selectedCatalogBanco?.side === "cartao";
 
 	const executeSave = useCallback(async (data, recurringScope) => {
 		startSaving();
@@ -320,15 +340,23 @@ export function useInsertForm() {
 			const typedPessoa = String(data.pessoa || "").trim();
 			const foundPessoa = typedPessoa ? await findPessoaByName(typedPessoa) : null;
 
-			let resolvedBancoId = data.id_banco ?? null;
-			if (selectedCatalogBanco) {
-				const userBancos = await listBancos({ visibilityScope: "mine", userId: userData?.id ?? undefined });
-				const existingBanco = userBancos.find(
+			// Resolve o banco: usa o existente; se for novo do catálogo, cria (ou reaproveita pelo nome) só agora ao salvar.
+			let resolvedBancoId = selectedCatalogBanco?.id_banco ?? data.id_banco ?? null;
+			if (!resolvedBancoId && selectedCatalogBanco?.isNewFromCatalog && selectedCatalogBanco?.nome) {
+				const userBancos = await listBancos({ visibilityScope: "mine", userId: userData?.id ?? undefined }).catch(() => []);
+				const existing = userBancos.find(
 					(b) => b.nome.trim().toLowerCase() === selectedCatalogBanco.nome.trim().toLowerCase()
 				);
-				resolvedBancoId = existingBanco
-					? existingBanco.id_banco
-					: (await createBanco(selectedCatalogBanco.nome, selectedCatalogBanco.cor_hex ?? "#6B7280", { userId: userData?.id ?? null })).id_banco;
+				if (existing) {
+					resolvedBancoId = existing.id_banco;
+				} else {
+					const created = await createBanco(
+						selectedCatalogBanco.nome,
+						selectedCatalogBanco.cor_hex ?? "#6B7280",
+						{ userId: userData?.id ?? null }
+					).catch(() => null);
+					resolvedBancoId = created?.id_banco ?? null;
+				}
 			}
 
 			const id_categoria = categories.find((c) => c.nome === data.categoria)?.id ?? null;
@@ -352,9 +380,25 @@ export function useInsertForm() {
 				json: JSON.stringify({ descricao: data.descricao || null }),
 			};
 
+			const cartaoSelecionado = selectedCatalogBanco?.side === "cartao";
+
 			let savedId = null;
 			let successMessage = "Lançamento salvo!";
-			if (ghostMode) {
+			if (cartaoSelecionado && !editId && !ghostMode) {
+				const parcelas = Math.max(1, Math.min(12, Number(data.parcelas) || 1));
+				const plano = buildInstallmentPlan({
+					purchaseDate: payload.data_vencimento,
+					parcelas,
+					valorTotal: payload.valor,
+					diaFechamento: selectedCatalogBanco.dia_fechamento,
+					diaVencimento: selectedCatalogBanco.dia_vencimento,
+				});
+				const result = await createTransacoesParceladas(payload, plano, {
+					isFamilyShared: payload.is_family_shared === 1,
+				});
+				savedId = result?.ids?.[0] ?? null;
+				successMessage = parcelas > 1 ? `Compra em ${parcelas}x lançada!` : "Lançamento salvo!";
+			} else if (ghostMode) {
 				const result = await materializeRecurrenceOccurrence({
 					recurrenceUuid: ghostRecurrenceUuid,
 					dueDate: ghostDueDate,
@@ -385,6 +429,9 @@ export function useInsertForm() {
 							user_id: userData?.id ?? null,
 						},
 					});
+				}
+				if (editingFatura?.id_fatura) {
+					await recalcFaturaTotal(editingFatura.id_fatura).catch(() => {});
 				}
 				savedId = editId;
 				successMessage = "Lançamento atualizado!";
@@ -428,9 +475,13 @@ export function useInsertForm() {
 	}, [
 		applyEditToRecurrenceTransacoes,
 		categories,
-		createBanco,
 		createRecurringTransacoes,
 		createTransacao,
+		createTransacoesParceladas,
+		recalcFaturaTotal,
+		createBanco,
+		listBancos,
+		editingFatura,
 		editId,
 		family?.id,
 		findPessoaByName,
@@ -438,7 +489,6 @@ export function useInsertForm() {
 		ghostDueDate,
 		ghostMode,
 		ghostRecurrenceUuid,
-		listBancos,
 		materializeRecurrenceOccurrence,
 		recurrenceMeta,
 		router,
@@ -451,13 +501,27 @@ export function useInsertForm() {
 	]);
 
 	const handleSave = useCallback(async (data) => {
+		const faturaStatus = editingFatura?.status;
+		if (editId && (faturaStatus === "fechada" || faturaStatus === "paga")) {
+			Alert.alert(
+				"Fatura " + (faturaStatus === "paga" ? "paga" : "fechada"),
+				"Este lançamento pertence a uma fatura " +
+					(faturaStatus === "paga" ? "já paga" : "fechada") +
+					". Deseja editar mesmo assim?",
+				[
+					{ text: "Cancelar", style: "cancel" },
+					{ text: "Editar", style: "destructive", onPress: () => executeSave(data, null) },
+				]
+			);
+			return;
+		}
 		if (editId && isFromRecurrence) {
 			setPendingFormData(data);
 			setRecurringEditModalOpen(true);
 			return;
 		}
 		await executeSave(data, null);
-	}, [editId, isFromRecurrence, executeSave]);
+	}, [editId, isFromRecurrence, executeSave, editingFatura]);
 
 	const handleRecurringEditScope = useCallback(async (scope) => {
 		setRecurringEditModalOpen(false);
@@ -484,6 +548,7 @@ export function useInsertForm() {
 		family,
 		selectedCatalogBanco,
 		handleBancoSelect,
+		isCartao,
 		categories,
 		recurringEditModalOpen,
 		onCloseRecurringEditModal: () => setRecurringEditModalOpen(false),

@@ -14,6 +14,7 @@ import {
 	getLatestLancamento,
 } from "@/utils/finance/homeScreenHelpers";
 import { toISODateString } from "@/utils/finance/helpers";
+import { groupCardTransactions } from "@/utils/finance/groupCardTransactions";
 
 export function useHomeFinance() {
 	const router = useRouter();
@@ -30,6 +31,8 @@ export function useHomeFinance() {
 	const [lancamentos, setLancamentos] = useState([]);
 	const [allLancamentos, setAllLancamentos] = useState([]);
 	const [banks, setBanks] = useState([]);
+	const [faturas, setFaturas] = useState([]);
+	const [groupCards, setGroupCards] = useState(true);
 
 	const hasFamily = Number(family?.id || userData?.familyId || 0) > 0;
 	const activeFamilyId = Number(family?.id || userData?.familyId || 0) || null;
@@ -69,12 +72,18 @@ export function useHomeFinance() {
 				userId: userData?.id ?? null,
 				familyId: activeFamilyId,
 			}),
+			database.listFaturas({
+				visibilityScope: effectiveScope,
+				userId: userData?.id ?? null,
+				familyId: activeFamilyId,
+			}),
 		])
-			.then(([data, allData, bancoData]) => {
+			.then(([data, allData, bancoData, faturaData]) => {
 				if (!active) return;
 				setLancamentos(Array.isArray(data) ? data : []);
 				setAllLancamentos(Array.isArray(allData) ? allData : []);
 				setBanks(Array.isArray(bancoData) ? bancoData : []);
+				setFaturas(Array.isArray(faturaData) ? faturaData : []);
 			})
 			.catch(() => {
 				if (active) setLancamentos([]);
@@ -101,10 +110,15 @@ export function useHomeFinance() {
 		startSync("Sincronizando dados...");
 		try {
 			await database.syncAllPendingData({ force: true, onProgress: updateStep });
-			const [data, allData, bancoData] = await Promise.all([
+			const [data, allData, bancoData, faturaData] = await Promise.all([
 				database.getTransacao(undefined, queryParams),
 				database.getTransacao(undefined, allQueryParams),
 				database.listBancos({
+					visibilityScope: effectiveScope,
+					userId: userData?.id ?? null,
+					familyId: activeFamilyId,
+				}),
+				database.listFaturas({
 					visibilityScope: effectiveScope,
 					userId: userData?.id ?? null,
 					familyId: activeFamilyId,
@@ -113,6 +127,7 @@ export function useHomeFinance() {
 			setLancamentos(Array.isArray(data) ? data : []);
 			setAllLancamentos(Array.isArray(allData) ? allData : []);
 			setBanks(Array.isArray(bancoData) ? bancoData : []);
+			setFaturas(Array.isArray(faturaData) ? faturaData : []);
 		} catch {
 		} finally {
 			setRefreshing(false);
@@ -122,10 +137,15 @@ export function useHomeFinance() {
 
 	const reload = useCallback(async () => {
 		try {
-			const [data, allData, bancoData] = await Promise.all([
+			const [data, allData, bancoData, faturaData] = await Promise.all([
 				database.getTransacao(undefined, queryParams),
 				database.getTransacao(undefined, allQueryParams),
 				database.listBancos({
+					visibilityScope: effectiveScope,
+					userId: userData?.id ?? null,
+					familyId: activeFamilyId,
+				}),
+				database.listFaturas({
 					visibilityScope: effectiveScope,
 					userId: userData?.id ?? null,
 					familyId: activeFamilyId,
@@ -134,6 +154,7 @@ export function useHomeFinance() {
 			setLancamentos(Array.isArray(data) ? data : []);
 			setAllLancamentos(Array.isArray(allData) ? allData : []);
 			setBanks(Array.isArray(bancoData) ? bancoData : []);
+			setFaturas(Array.isArray(faturaData) ? faturaData : []);
 		} catch {
 		}
 	}, [activeFamilyId, allQueryParams, database, effectiveScope, queryParams, userData?.id]);
@@ -244,6 +265,11 @@ export function useHomeFinance() {
 		[lancamentos, allLancamentos, dateRange.start, dateRange.end]
 	);
 
+	const displayLancamentos = useMemo(
+		() => groupCardTransactions(lancamentos, { faturas, banks, groupCards }),
+		[lancamentos, faturas, banks, groupCards]
+	);
+
 	const banksResumo = useMemo(() => {
 		if (!banks.length) return [];
 		return banks.map((bank) => {
@@ -273,9 +299,11 @@ export function useHomeFinance() {
 		dateRangeLabel,
 		isFilterActive,
 		quickActions,
-		lancamentos,
+		lancamentos: displayLancamentos,
 		resumo,
 		banksResumo,
+		groupCards,
+		setGroupCards,
 		onRefresh,
 		openInsert,
 		handlePressItem,

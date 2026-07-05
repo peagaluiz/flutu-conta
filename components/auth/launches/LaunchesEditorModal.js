@@ -90,6 +90,77 @@ function BancoColorPicker({ value, onChange, colors }) {
 	);
 }
 
+function BancoTipoToggle({ label, description, value, onValueChange, colors }) {
+	return (
+		<Box className="flex-row items-center justify-between rounded-xl px-3 py-2" style={{ backgroundColor: colors.surfaceMuted }}>
+			<Box className="flex-1 pr-3">
+				<Text className="font-semibold" style={{ color: colors.textPrimary }}>
+					{label}
+				</Text>
+				{description ? (
+					<Text size="sm" style={{ color: colors.textSecondary }}>
+						{description}
+					</Text>
+				) : null}
+			</Box>
+			<Switch
+				value={value}
+				onValueChange={onValueChange}
+				trackColor={{ false: colors.borderStrong, true: colors.success }}
+				thumbColor={colors.surface}
+			/>
+		</Box>
+	);
+}
+
+function CartaoDiasInputs({
+	diaFechamento,
+	setDiaFechamento,
+	diaVencimento,
+	setDiaVencimento,
+	colors,
+}) {
+	const sanitize = (text) => text.replace(/[^0-9]/g, "").slice(0, 2);
+	return (
+		<Box className="flex-row gap-3">
+			<VStack className="flex-1 gap-2">
+				<Text className="text-xs" style={{ color: colors.textSecondary }}>
+					Dia de fechamento
+				</Text>
+				<Input
+					variant="outline"
+					style={{ borderColor: colors.border, backgroundColor: colors.surface }}
+				>
+					<InputField
+						value={diaFechamento}
+						onChangeText={(t) => setDiaFechamento(sanitize(t))}
+						placeholder="Ex: 28"
+						keyboardType="number-pad"
+						style={{ color: colors.textPrimary }}
+					/>
+				</Input>
+			</VStack>
+			<VStack className="flex-1 gap-2">
+				<Text className="text-xs" style={{ color: colors.textSecondary }}>
+					Dia de vencimento
+				</Text>
+				<Input
+					variant="outline"
+					style={{ borderColor: colors.border, backgroundColor: colors.surface }}
+				>
+					<InputField
+						value={diaVencimento}
+						onChangeText={(t) => setDiaVencimento(sanitize(t))}
+						placeholder="Ex: 7"
+						keyboardType="number-pad"
+						style={{ color: colors.textPrimary }}
+					/>
+				</Input>
+			</VStack>
+		</Box>
+	);
+}
+
 function FamilyShareToggle({ value, onValueChange, colors }) {
 	return (
 		<Box
@@ -133,6 +204,14 @@ export default function LaunchesEditorModal({
 	setEditorValue,
 	editorCor,
 	setEditorCor,
+	editorIsCorrente,
+	setEditorIsCorrente,
+	editorIsCartao,
+	setEditorIsCartao,
+	editorDiaFechamento,
+	setEditorDiaFechamento,
+	editorDiaVencimento,
+	setEditorDiaVencimento,
 	selectedPessoaId,
 	pessoaOptions,
 	onSelectPessoa,
@@ -200,6 +279,37 @@ export default function LaunchesEditorModal({
 							<BancoColorPicker
 								value={editorCor}
 								onChange={setEditorCor}
+								colors={colors}
+							/>
+						) : null}
+
+						{isBanco ? (
+							<VStack className="gap-2">
+								<Text className="text-xs" style={{ color: colors.textSecondary }}>
+									Este banco é usado como
+								</Text>
+								<BancoTipoToggle
+									label="Conta corrente"
+									value={editorIsCorrente}
+									onValueChange={setEditorIsCorrente}
+									colors={colors}
+								/>
+								<BancoTipoToggle
+									label="Cartão de crédito"
+									description="Lança compras parceladas em faturas."
+									value={editorIsCartao}
+									onValueChange={setEditorIsCartao}
+									colors={colors}
+								/>
+							</VStack>
+						) : null}
+
+						{isBanco && editorIsCartao ? (
+							<CartaoDiasInputs
+								diaFechamento={editorDiaFechamento}
+								setDiaFechamento={setEditorDiaFechamento}
+								diaVencimento={editorDiaVencimento}
+								setDiaVencimento={setEditorDiaVencimento}
 								colors={colors}
 							/>
 						) : null}

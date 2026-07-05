@@ -127,17 +127,20 @@ export function buildResumoGeral(items = []) {
 }
 
 export function finalizeResumo(resumo, saldoInicial = 0) {
-	const saldo = resumo.entradas - resumo.saidas;
+	const entradas = resumo.entradas + saldoInicial;
+	const saldo = entradas - resumo.saidas;
 	const saldoReal = saldoInicial + resumo.entradasPagas - resumo.saidasPagas;
 	return {
 		...resumo,
+		entradas,
 		saldo,
 		saldoReal,
 		saldoInicial,
-		entradasLabel: formatCurrency(resumo.entradas),
+		entradasLabel: formatCurrency(entradas),
 		saidasLabel: formatCurrency(resumo.saidas),
 		saldoLabel: formatCurrency(saldo),
 		saldoRealLabel: formatCurrency(saldoReal),
+		saldoInicialLabel: formatCurrency(saldoInicial),
 	};
 }
 
@@ -276,35 +279,35 @@ export function buildCategoryExpenses(items = [], top = 6) {
 
 export function buildBanksBreakdown(items = [], banks = []) {
 	const base = normalizeTransactions(items);
-	const bankMap = new Map();
 
+	// metadados do banco (nome/cor) por id
+	const banksById = new Map();
 	(Array.isArray(banks) ? banks : []).forEach((bank) => {
-		const key = Number(bank.id_banco);
-		bankMap.set(key, {
-			id_banco: key,
-			nome: bank.nome,
-			cor_hex: bank.cor_hex || "#6B7280",
-			gastos: 0,
-			gastosFuturos: 0,
-			recebidos: 0,
-			items: [],
-		});
+		banksById.set(Number(bank.id_banco), bank);
 	});
 
+	// Uma entrada por (banco, lado): lado = 'cartao' quando a transação tem fatura, senão 'conta'.
+	// Assim um banco que é conta e cartão aparece nas duas seções.
+	const bankMap = new Map();
+
 	base.forEach((item) => {
-		const key = Number(item.id_banco || 0);
-		let entry = bankMap.get(key);
+		const id = Number(item.id_banco || 0);
+		const kind = item.id_fatura ? "cartao" : "conta";
+		const mapKey = `${id}:${kind}`;
+		let entry = bankMap.get(mapKey);
 		if (!entry) {
+			const meta = banksById.get(id);
 			entry = {
-				id_banco: key || null,
-				nome: key ? "Banco removido" : "Sem banco",
-				cor_hex: "#6B7280",
+				id_banco: id || null,
+				kind,
+				nome: meta?.nome ?? (id ? "Banco removido" : "Sem banco"),
+				cor_hex: meta?.cor_hex || "#6B7280",
 				gastos: 0,
 				gastosFuturos: 0,
 				recebidos: 0,
 				items: [],
 			};
-			bankMap.set(key, entry);
+			bankMap.set(mapKey, entry);
 		}
 		entry.items.push(item);
 		if (item.tipo === "pagar") {

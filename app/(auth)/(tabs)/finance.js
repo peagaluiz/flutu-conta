@@ -23,6 +23,8 @@ import { FinanceMonthlyChartSection } from "@/components/finance/dashboard/Finan
 import { FinanceCategoryChartSection } from "@/components/finance/dashboard/FinanceCategoryChartSection";
 import { FinanceBanksChartSection } from "@/components/finance/dashboard/FinanceBanksChartSection";
 import { FinanceDetailSheet } from "@/components/finance/dashboard/FinanceDetailSheet";
+import { SaldoInicialAjusteModal } from "@/components/finance/dashboard/SaldoInicialAjusteModal";
+import { toISODateString } from "@/utils/finance/helpers";
 import { useSyncProgress } from "@/state/SyncProgressContext";
 
 function FinanceSkeleton() {
@@ -54,6 +56,9 @@ export default function Finance() {
 	const [detailSheetOpen, setDetailSheetOpen] = useState(false);
 	const [detailTitle, setDetailTitle] = useState("Detalhes");
 	const [detailItems, setDetailItems] = useState([]);
+	const [detailSaldoInicial, setDetailSaldoInicial] = useState(null);
+	const [ajusteModalOpen, setAjusteModalOpen] = useState(false);
+	const [savingAjuste, setSavingAjuste] = useState(false);
 
 	const canUseFamilyScope = Number(family?.id || userData?.familyId || 0) > 0;
 	const activeFamilyId =
@@ -128,9 +133,10 @@ export default function Finance() {
 		[filteredItems, banks]
 	);
 
-	const openDetails = useCallback((title, rows) => {
+	const openDetails = useCallback((title, rows, saldoInicial = null) => {
 		setDetailTitle(title);
 		setDetailItems(Array.isArray(rows) ? rows : []);
+		setDetailSaldoInicial(saldoInicial);
 		setDetailSheetOpen(true);
 	}, []);
 
@@ -209,6 +215,43 @@ export default function Finance() {
 		loadData(false);
 	}, [loadData]);
 
+	const handleCreateAjuste = useCallback(
+		async ({ motivo, valor, tipo }) => {
+			setSavingAjuste(true);
+			try {
+				const idCategoria = await database.getCategoriaIdByName("Ajuste");
+				const base = new Date(
+					`${String(dateRange.start).slice(0, 10)}T12:00:00`
+				);
+				base.setDate(base.getDate() - 1);
+				const adjustmentDate = toISODateString(base);
+				await database.createTransacao({
+					tipo,
+					valor,
+					id_categoria: idCategoria,
+					id_pessoa: null,
+					pessoa: null,
+					id_imobilizado: null,
+					id_banco: null,
+					family_id: null,
+					is_family_shared: 0,
+					user_id: userData?.id ?? null,
+					data_transacao: new Date().toISOString(),
+					data_vencimento: adjustmentDate,
+					data_baixa: adjustmentDate,
+					status: "pago",
+					observacao: motivo,
+					json: JSON.stringify({ descricao: motivo }),
+				});
+				setAjusteModalOpen(false);
+				await loadData(true);
+			} finally {
+				setSavingAjuste(false);
+			}
+		},
+		[database, dateRange.start, loadData, userData?.id]
+	);
+
 	const onRefresh = async () => {
 		setRefreshing(true);
 		startSync("Sincronizando dados...");
@@ -245,14 +288,19 @@ export default function Finance() {
 								resumo={resumo}
 								colors={colors}
 								onPressSaldo={() =>
-									openDetails("Saldo consolidado", filteredItems)
+									openDetails(
+										"Saldo consolidado",
+										filteredItems,
+										resumo.saldoInicial
+									)
 								}
 								onPressEntradas={() =>
 									openDetails(
 										"Entradas",
 										filteredItems.filter(
 											(item) => item.tipo === "receber"
-										)
+										),
+										resumo.saldoInicial
 									)
 								}
 								onPressSaidas={() =>
@@ -322,6 +370,20 @@ export default function Finance() {
 				items={detailItems}
 				colors={colors}
 				onItemPress={handleDetailItemPress}
+				saldoInicial={detailSaldoInicial}
+				onPressSaldoInicial={() => {
+					setDetailSheetOpen(false);
+					setAjusteModalOpen(true);
+				}}
+			/>
+
+			<SaldoInicialAjusteModal
+				isOpen={ajusteModalOpen}
+				onClose={() => setAjusteModalOpen(false)}
+				saldoInicialLabel={resumo.saldoInicialLabel}
+				saving={savingAjuste}
+				onSubmit={handleCreateAjuste}
+				colors={colors}
 			/>
 		</>
 	);

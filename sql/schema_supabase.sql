@@ -105,6 +105,11 @@ CREATE TABLE IF NOT EXISTS public.banco (
     id_banco         BIGSERIAL   PRIMARY KEY,
     nome             TEXT        NOT NULL,
     cor_hex          TEXT        NOT NULL DEFAULT '#6B7280',
+    tipo             TEXT        NOT NULL DEFAULT 'corrente',  -- legado (vestigial): substituído por is_corrente/is_cartao
+    is_corrente      INTEGER     NOT NULL DEFAULT 1,           -- banco funciona como conta corrente
+    is_cartao        INTEGER     NOT NULL DEFAULT 0,           -- banco funciona como cartão de crédito
+    dia_fechamento   INTEGER,                                 -- dia do mês que a fatura fecha (cartão)
+    dia_vencimento   INTEGER,                                 -- dia do mês que a fatura vence (cartão)
     user_id          UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
     family_id        BIGINT      REFERENCES public.familias(id) ON DELETE SET NULL,
     is_family_shared INTEGER     NOT NULL DEFAULT 0,
@@ -112,6 +117,12 @@ CREATE TABLE IF NOT EXISTS public.banco (
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted          INTEGER     NOT NULL DEFAULT 0
 );
+-- Migração para bases existentes
+ALTER TABLE public.banco ADD COLUMN IF NOT EXISTS tipo           TEXT NOT NULL DEFAULT 'corrente';
+ALTER TABLE public.banco ADD COLUMN IF NOT EXISTS is_corrente    INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE public.banco ADD COLUMN IF NOT EXISTS is_cartao      INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE public.banco ADD COLUMN IF NOT EXISTS dia_fechamento INTEGER;
+ALTER TABLE public.banco ADD COLUMN IF NOT EXISTS dia_vencimento INTEGER;
 
 CREATE TABLE IF NOT EXISTS public.banco_catalogo (
     id       BIGSERIAL PRIMARY KEY,
@@ -217,10 +228,19 @@ CREATE TABLE IF NOT EXISTS public.transacoes (
     status           TEXT           NOT NULL DEFAULT 'pendente',
     observacao       TEXT,
     json             JSONB,
+    id_fatura        BIGINT,                       -- FK p/ cartao_faturas (constraint adicionada após a tabela existir)
+    parcela_atual    INTEGER,
+    parcela_total    INTEGER,
+    ofx_fitid        TEXT,                         -- ID único do item OFX (dedup em reimportações)
     created_at       TIMESTAMPTZ    NOT NULL DEFAULT now(),
     updated_at       TIMESTAMPTZ    NOT NULL DEFAULT now(),
     deleted          INTEGER        NOT NULL DEFAULT 0
 );
+-- Migração para bases existentes
+ALTER TABLE public.transacoes ADD COLUMN IF NOT EXISTS id_fatura     BIGINT;
+ALTER TABLE public.transacoes ADD COLUMN IF NOT EXISTS parcela_atual INTEGER;
+ALTER TABLE public.transacoes ADD COLUMN IF NOT EXISTS parcela_total INTEGER;
+ALTER TABLE public.transacoes ADD COLUMN IF NOT EXISTS ofx_fitid     TEXT;
 
 CREATE TABLE IF NOT EXISTS public.recorrencias (
     id_recurrencia    BIGSERIAL   PRIMARY KEY,
@@ -254,6 +274,35 @@ CREATE TABLE IF NOT EXISTS public.recorrencia_transacoes (
     UNIQUE(id_recurrencia, due_date)
 );
 
+CREATE TABLE IF NOT EXISTS public.cartao_faturas (
+    id_fatura              BIGSERIAL     PRIMARY KEY,
+    id_banco               BIGINT        NOT NULL REFERENCES public.banco(id_banco) ON DELETE CASCADE,
+    mes_referencia         DATE          NOT NULL,                  -- primeiro dia do mês da fatura
+    data_fechamento        DATE,
+    data_vencimento        DATE,
+    valor_total            NUMERIC(15,2) NOT NULL DEFAULT 0,
+    status                 TEXT          NOT NULL DEFAULT 'aberta', -- 'aberta' | 'fechada' | 'paga'
+    id_transacao_pagamento BIGINT        REFERENCES public.transacoes(id_transacao) ON DELETE SET NULL,
+    family_id              BIGINT        REFERENCES public.familias(id) ON DELETE SET NULL,
+    is_family_shared       INTEGER       NOT NULL DEFAULT 0,
+    user_id                UUID          REFERENCES auth.users(id) ON DELETE SET NULL,
+    created_at             TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at             TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    deleted                INTEGER       NOT NULL DEFAULT 0
+);
+
+-- FK transacoes.id_fatura -> cartao_faturas (adicionada após ambas existirem)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'transacoes_id_fatura_fkey'
+    ) THEN
+        ALTER TABLE public.transacoes
+            ADD CONSTRAINT transacoes_id_fatura_fkey
+            FOREIGN KEY (id_fatura) REFERENCES public.cartao_faturas(id_fatura) ON DELETE SET NULL;
+    END IF;
+END $$;
+
 -- =============================================================================
 -- GRANTS
 -- O role "authenticated" precisa de privilégio de tabela para que o RLS
@@ -276,6 +325,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.imobilizado            TO a
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.transacoes             TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.recorrencias           TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.recorrencia_transacoes TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.cartao_faturas         TO authenticated;
 
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
 
@@ -338,6 +388,11 @@ CREATE TRIGGER trg_recorrencias_updated_at
     BEFORE UPDATE ON public.recorrencias
     FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+DROP TRIGGER IF EXISTS trg_cartao_faturas_updated_at ON public.cartao_faturas;
+CREATE TRIGGER trg_cartao_faturas_updated_at
+    BEFORE UPDATE ON public.cartao_faturas
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
 -- =============================================================================
 -- TRIGGERS: fill/preserve user_id
 -- =============================================================================
@@ -393,6 +448,17 @@ CREATE TRIGGER trg_recorrencias_preserve_user_id
     BEFORE UPDATE ON public.recorrencias
     FOR EACH ROW EXECUTE FUNCTION private.preserve_user_id_on_update();
 
+DROP TRIGGER IF EXISTS trg_cartao_faturas_fill_user_id     ON public.cartao_faturas;
+DROP TRIGGER IF EXISTS trg_cartao_faturas_preserve_user_id ON public.cartao_faturas;
+
+CREATE TRIGGER trg_cartao_faturas_fill_user_id
+    BEFORE INSERT ON public.cartao_faturas
+    FOR EACH ROW EXECUTE FUNCTION private.fill_user_id_on_insert();
+
+CREATE TRIGGER trg_cartao_faturas_preserve_user_id
+    BEFORE UPDATE ON public.cartao_faturas
+    FOR EACH ROW EXECUTE FUNCTION private.preserve_user_id_on_update();
+
 -- =============================================================================
 -- ÍNDICES
 -- =============================================================================
@@ -445,6 +511,12 @@ CREATE INDEX IF NOT EXISTS idx_recorrencias_deleted    ON public.recorrencias(de
 CREATE INDEX IF NOT EXISTS idx_recorrencia_transacoes_recurrencia ON public.recorrencia_transacoes(id_recurrencia);
 CREATE INDEX IF NOT EXISTS idx_recorrencia_transacoes_due_date    ON public.recorrencia_transacoes(due_date);
 
+-- cartao_faturas
+CREATE INDEX IF NOT EXISTS idx_cartao_faturas_banco   ON public.cartao_faturas(id_banco, mes_referencia);
+CREATE INDEX IF NOT EXISTS idx_cartao_faturas_user    ON public.cartao_faturas(user_id);
+CREATE INDEX IF NOT EXISTS idx_cartao_faturas_family  ON public.cartao_faturas(family_id, is_family_shared);
+CREATE INDEX IF NOT EXISTS idx_transacoes_id_fatura   ON public.transacoes(id_fatura);
+
 -- =============================================================================
 -- ROW LEVEL SECURITY
 -- =============================================================================
@@ -462,6 +534,7 @@ ALTER TABLE public.imobilizado            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transacoes             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recorrencias           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recorrencia_transacoes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cartao_faturas         ENABLE ROW LEVEL SECURITY;
 
 -- =============================================================================
 -- POLÍTICAS RLS
@@ -489,6 +562,10 @@ INSERT INTO public.categoria_catalogo (nome, icone, cor_hex, ordem) VALUES
     ('Investimentos','TrendingUp',    '#22C55E', 8),
     ('Outros',       'HelpCircle',    '#6B7280', 9)
 ON CONFLICT DO NOTHING;
+
+INSERT INTO public.categoria_catalogo (nome, icone, cor_hex, ordem)
+SELECT 'Ajuste', 'Scale', '#64748B', 10
+WHERE NOT EXISTS (SELECT 1 FROM public.categoria_catalogo WHERE nome = 'Ajuste');
 
 -- Seed: bancos brasileiros principais
 INSERT INTO public.banco_catalogo (nome, cor_hex) VALUES
@@ -788,3 +865,29 @@ CREATE POLICY "recorrencia_transacoes_delete" ON public.recorrencia_transacoes F
               AND t.user_id = auth.uid()
         )
     );
+
+-- ─── cartao_faturas ───────────────────────────────────────────────────────────
+DROP POLICY IF EXISTS "cartao_faturas_select" ON public.cartao_faturas;
+DROP POLICY IF EXISTS "cartao_faturas_insert" ON public.cartao_faturas;
+DROP POLICY IF EXISTS "cartao_faturas_update" ON public.cartao_faturas;
+DROP POLICY IF EXISTS "cartao_faturas_delete" ON public.cartao_faturas;
+
+CREATE POLICY "cartao_faturas_select" ON public.cartao_faturas FOR SELECT
+    USING (
+        user_id = auth.uid()
+        OR (is_family_shared = 1 AND family_id IS NOT NULL
+            AND private.is_familia_member(family_id))
+    );
+
+CREATE POLICY "cartao_faturas_insert" ON public.cartao_faturas FOR INSERT
+    WITH CHECK (auth.uid() IS NOT NULL);
+
+CREATE POLICY "cartao_faturas_update" ON public.cartao_faturas FOR UPDATE
+    USING (
+        user_id = auth.uid()
+        OR (is_family_shared = 1 AND family_id IS NOT NULL
+            AND private.is_familia_member(family_id))
+    );
+
+CREATE POLICY "cartao_faturas_delete" ON public.cartao_faturas FOR DELETE
+    USING (user_id = auth.uid());

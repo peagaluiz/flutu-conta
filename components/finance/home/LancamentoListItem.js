@@ -23,12 +23,12 @@ function getDescricao(item) {
 	return item.observacao || "";
 }
 
-export function LancamentoListItem({ item, onPress, onLongPress }) {
+export function LancamentoListItem({ item, onPress, onLongPress, iconColor }) {
 	const { theme } = useTheme();
 	const colors = getThemeColors(theme);
 	const isReceber = item.tipo === "receber";
 	const isVencido = isRecebimentoVencido(item);
-	const iconColor = colors.textPrimary;
+	const resolvedIconColor = iconColor ?? colors.textPrimary;
 
 	const pessoa = item.pessoa || "";
 	const descricao = getDescricao(item);
@@ -54,11 +54,11 @@ export function LancamentoListItem({ item, onPress, onLongPress }) {
 				<Box className="flex-row items-center justify-between">
 					<Box className="flex-row items-center gap-3 flex-1 mr-2">
 						{isVencido ? (
-							<CircleAlert size={22} color={iconColor} />
+							<CircleAlert size={22} color={resolvedIconColor} />
 						) : isReceber ? (
-							<ArrowUpCircle size={22} color={iconColor} />
+							<ArrowUpCircle size={22} color={resolvedIconColor} />
 						) : (
-							<ArrowDownCircle size={22} color={iconColor} />
+							<ArrowDownCircle size={22} color={resolvedIconColor} />
 						)}
 						<Text
 							className="font-medium flex-1"

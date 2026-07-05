@@ -38,6 +38,7 @@ export function TransacaoMainSection({
     toISODate,
     formatDateDisplay,
     canShareWithFamily,
+    isCartao = false,
 }) {
     const inputBorderColor = themeColors?.borderStrong;
     const inputBackgroundColor = themeColors?.surface;
@@ -219,7 +220,7 @@ export function TransacaoMainSection({
                     render={({ field: { onChange, value } }) => (
                         <FormControl size="md" isInvalid={!!errors.data_vencimento} className="my-1">
                             <FormControlLabel>
-                                <FormControlLabelText>Vencimento</FormControlLabelText>
+                                <FormControlLabelText>{isCartao ? "Data da compra" : "Vencimento"}</FormControlLabelText>
                             </FormControlLabel>
 
                             <Pressable onPress={() => setShowDatePicker(true)}>

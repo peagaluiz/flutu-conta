@@ -9,7 +9,7 @@ import { ResumoFinanceiroCard } from "@/components/finance/home/ResumoFinanceiro
 import { HomeQuickActionsSection } from "@/components/finance/home/HomeQuickActionsSection";
 import { HomeTransactionsSection } from "@/components/finance/home/HomeTransactionsSection";
 import { HomeVisibilitySelector } from "@/components/finance/home/HomeVisibilitySelector";
-import { HomeDateFilterModal } from "@/components/finance/home/HomeDateFilterModal";
+import { DateFilterModal } from "@/components/finance/DateFilterModal";
 import { useHomeFinance } from "@/hooks/useHomeFinance";
 
 export default function HomeFinanceList() {
@@ -23,10 +23,6 @@ export default function HomeFinanceList() {
 		refreshing,
 		visibilityScope,
 		setVisibilityScope,
-		dateRange,
-		setDateRange,
-		dateField,
-		setDateField,
 		hasFamily,
 		dateRangeLabel,
 		isFilterActive,
@@ -34,6 +30,8 @@ export default function HomeFinanceList() {
 		lancamentos,
 		resumo,
 		banksResumo,
+		groupCards,
+		setGroupCards,
 		onRefresh,
 		handlePressItem,
 		handleDeleteItem,
@@ -90,15 +88,12 @@ export default function HomeFinanceList() {
 				</Box>
 			</ScrollView>
 
-			<HomeDateFilterModal
+			<DateFilterModal
 				isOpen={filterModalOpen}
-				dateRange={dateRange}
-				dateField={dateField}
 				onClose={() => setFilterModalOpen(false)}
-				onApply={({ start, end, dateField: newField }) => {
-					setDateRange({ start, end });
-					setDateField(newField);
-				}}
+				showGroupCards
+				groupCards={groupCards}
+				onToggleGroupCards={setGroupCards}
 			/>
 		</>
 	);

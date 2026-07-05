@@ -20,6 +20,7 @@ import {
 	toISODate,
 } from "@/components/finance/insert/insertFormConfig";
 import { TransacaoMainSection } from "@/components/finance/insert/TransacaoMainSection";
+import { ParcelasSection } from "@/components/finance/insert/ParcelasSection";
 import { ObservacaoSection } from "@/components/finance/insert/ObservacaoSection";
 import { RecurrenceSection } from "@/components/finance/insert/RecurrenceSection";
 import { InsertFormSkeleton } from "@/components/finance/insert/InsertFormSkeleton";
@@ -51,6 +52,7 @@ export default function Insert() {
 		family,
 		selectedCatalogBanco,
 		handleBancoSelect,
+		isCartao,
 		categories,
 		recurringEditModalOpen,
 		onCloseRecurringEditModal,
@@ -85,10 +87,11 @@ export default function Insert() {
 					themeColors={themeColors}
 					actionSheetContentStyle={actionSheetContentStyle}
 					disabled={isSaving}
+					familyId={family?.id ? Number(family.id) : null}
 				/>
 			),
 		});
-	}, [selectedCatalogBanco, handleBancoSelect, themeColors, actionSheetContentStyle, isSaving]);
+	}, [selectedCatalogBanco, handleBancoSelect, themeColors, actionSheetContentStyle, isSaving, family?.id]);
 
 	const shouldShowSkeleton = isLoading || isBooting;
 
@@ -128,7 +131,16 @@ export default function Insert() {
 						toISODate={toISODate}
 						formatDateDisplay={formatDateDisplay}
 						canShareWithFamily={Boolean(family?.id)}
+						isCartao={isCartao}
 					/>
+					{isCartao && !isEditMode ? (
+						<ParcelasSection
+							control={control}
+							themeColors={themeColors}
+							isDarkMode={isDarkMode}
+						/>
+					) : null}
+					{!isCartao ? (
 					<RecurrenceSection
 						isDarkMode={isDarkMode}
 						themeColors={themeColors}
@@ -148,6 +160,7 @@ export default function Insert() {
 						parseDateValue={parseDateValue}
 						toISODate={toISODate}
 					/>
+					) : null}
 					<VStack className="w-full pb-5 justify-end">
 						<ObservacaoSection
 							control={control}

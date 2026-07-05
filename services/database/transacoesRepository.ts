@@ -25,6 +25,7 @@ import {
 	syncPendingTransacoes,
 	upsertRemoteTransacaoLocally,
 } from "@/services/database/transacoesSync";
+import { createFaturaRepository } from "@/services/database/faturaRepository";
 
 type VisibilityScope = "mine" | "family" | "all";
 
@@ -152,13 +153,17 @@ async function insertTransacaoLocal(
         status,
         observacao,
         json,
+        id_fatura,
+        parcela_atual,
+        parcela_total,
+        ofx_fitid,
         created_at,
         updated_at,
         data_sync,
         sync_status,
         synced,
         deleted
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
 		null,
 		data.tipo,
@@ -177,6 +182,10 @@ async function insertTransacaoLocal(
 		data.status ?? "pendente",
 		data.observacao ?? null,
 		data.json ?? null,
+		data.id_fatura ?? null,
+		data.parcela_atual ?? null,
+		data.parcela_total ?? null,
+		data.ofx_fitid ?? null,
 		nowISO(),
 		nowISO(),
 		null,
@@ -225,6 +234,82 @@ export function createTransacoesRepository() {
 			const insertResult = await insertTransacaoLocal(payload);
 
 			return { insertId: String(insertResult.insertId) };
+		},
+
+		// Cria uma transação por parcela, cada uma vinculada à fatura do mês correspondente.
+		createTransacoesParceladas: async (
+			data: Omit<TransacaoDatabase, "id_transacao" | "created_at" | "updated_at">,
+			plano: Array<{
+				mesReferencia: string;
+				dataFechamento?: string | null;
+				dataVencimento: string;
+				parcelaAtual: number;
+				parcelaTotal: number;
+				valorParcela: number;
+			}>,
+			options?: { isFamilyShared?: boolean }
+		) => {
+			if (!data.id_banco) throw new Error("Cartão (banco) é obrigatório para parcelamento");
+
+			let resolvedUserId = data.user_id ?? null;
+			if (!resolvedUserId) {
+				const visibility = await resolveVisibilityContext();
+				resolvedUserId = visibility.userId ?? null;
+			}
+
+			const fatura = createFaturaRepository();
+			const ids: string[] = [];
+			const touchedFaturas = new Set<number>();
+
+			for (const parcela of plano) {
+				const idFatura = await fatura.findOrCreateFatura({
+					idBanco: Number(data.id_banco),
+					mesReferencia: parcela.mesReferencia,
+					dataFechamento: parcela.dataFechamento ?? null,
+					dataVencimento: parcela.dataVencimento,
+					userId: resolvedUserId,
+					familyId: data.family_id ?? null,
+					isFamilyShared: Boolean(options?.isFamilyShared ?? Number(data.is_family_shared ?? 0) === 1),
+				});
+				touchedFaturas.add(idFatura);
+
+				const result = await (Platform.OS === "web"
+					? supabase
+							.from("transacoes")
+							.insert({
+								...data,
+								user_id: resolvedUserId,
+								valor: parcela.valorParcela,
+								data_vencimento: parcela.dataVencimento,
+								id_fatura: idFatura,
+								parcela_atual: parcela.parcelaAtual,
+								parcela_total: parcela.parcelaTotal,
+								updated_at: null,
+							})
+							.select("id_transacao")
+							.single()
+							.then(({ data: inserted, error }) => {
+								if (error) throw error.message;
+								return { insertId: String(inserted.id_transacao) };
+							})
+					: insertTransacaoLocal({
+							...data,
+							user_id: resolvedUserId,
+							valor: parcela.valorParcela,
+							data_vencimento: parcela.dataVencimento,
+							id_fatura: idFatura,
+							parcela_atual: parcela.parcelaAtual,
+							parcela_total: parcela.parcelaTotal,
+						}));
+
+				ids.push(result.insertId);
+			}
+
+			for (const idFatura of touchedFaturas) {
+				await fatura.recalcFaturaTotal(idFatura);
+			}
+
+			return { created: ids.length, ids, faturaIds: Array.from(touchedFaturas) };
 		},
 
 		createRecurringTransacoes: async (
@@ -602,6 +687,51 @@ export function createTransacoesRepository() {
 				id_transacao
 			);
 			return { updated: true };
+		},
+
+		// Retorna o conjunto de ofx_fitid já existentes (não deletados) dentre os informados.
+		findExistingFitids: async (fitids: string[]): Promise<Set<string>> => {
+			const clean = Array.from(new Set((fitids || []).filter(Boolean)));
+			if (!clean.length) return new Set();
+
+			if (Platform.OS === "web") {
+				const { data, error } = await supabase
+					.from("transacoes")
+					.select("ofx_fitid")
+					.eq("deleted", 0)
+					.in("ofx_fitid", clean);
+				if (error) throw error.message;
+				return new Set((data ?? []).map((r: any) => String(r.ofx_fitid)).filter(Boolean));
+			}
+
+			if (!db) return new Set();
+			const placeholders = clean.map(() => "?").join(",");
+			const rows = await db.getAllAsync<{ ofx_fitid: string }>(
+				`SELECT DISTINCT ofx_fitid FROM transacoes
+				 WHERE deleted = 0 AND ofx_fitid IN (${placeholders})`,
+				...clean
+			);
+			return new Set((rows ?? []).map((r) => String(r.ofx_fitid)).filter(Boolean));
+		},
+
+		// Transações vinculadas a uma fatura (para match na importação e exibição).
+		listTransacoesByFatura: async (idFatura: number) => {
+			if (Platform.OS === "web") {
+				const { data, error } = await supabase
+					.from("transacoes")
+					.select("id_transacao, valor, tipo, json, observacao, ofx_fitid")
+					.eq("id_fatura", idFatura)
+					.eq("deleted", 0);
+				if (error) throw error.message;
+				return data ?? [];
+			}
+			if (!db) return [];
+			const rows = await db.getAllAsync<any>(
+				`SELECT id_transacao, valor, tipo, json, observacao, ofx_fitid
+				 FROM transacoes WHERE id_fatura = ? AND deleted = 0`,
+				idFatura
+			);
+			return rows ?? [];
 		},
 
 		getPessoasSuggestions: async (search?: string, limit = 8) => {

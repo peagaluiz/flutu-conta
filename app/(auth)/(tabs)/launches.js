@@ -3,7 +3,6 @@ import { FlatList, RefreshControl } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/state/AuthContext";
-import { useInsertIntercept } from "@/state/InsertInterceptContext";
 import { useFinanceDate } from "@/state/FinanceDateContext";
 
 import { useTheme } from "@/components/ui/gluestack-ui-provider/ThemeProvider/ThemeProvider";
@@ -30,7 +29,9 @@ import LaunchesEditorModal from "@/components/auth/launches/LaunchesEditorModal"
 import BancoCatalogoSheet from "@/components/auth/launches/BancoCatalogoSheet";
 import { LaunchesBulkActions } from "@/components/auth/launches/LaunchesBulkActions";
 import { BaixaDateModal } from "@/components/auth/launches/BaixaDateModal";
-import { LaunchesFilterModal } from "@/components/auth/launches/LaunchesFilterModal";
+import { DateFilterModal } from "@/components/finance/DateFilterModal";
+import { buildDefaultHomeDateRange } from "@/utils/finance/homeScreenHelpers";
+import { OfxImportModal } from "@/components/finance/insert/OfxImportModal";
 
 const ItemSeparator = () => <Box style={{ height: 10 }} />;
 
@@ -41,36 +42,54 @@ export default function Launches() {
 	const database = useDatabase();
 	const { family, userData } = useAuth();
 
-	const { openIntercept } = useInsertIntercept();
 	const { highlightId: highlightParam, highlightTs: highlightTsParam } = useLocalSearchParams();
 
 	const [localHighlightId, setLocalHighlightId] = useState(null);
 	const scrolledForHighlightRef = useRef(null);
 
-	const { dateRange: finDateRange, dateField: finDateField } = useFinanceDate();
-	const [activeFilters, setActiveFilters] = useState(() => ({
-		searchText: "",
-		dateFrom: finDateRange?.start ?? null,
-		dateTo: finDateRange?.end ?? null,
-		dateField: finDateField ?? "data_vencimento",
-	}));
+	const { dateRange, dateField } = useFinanceDate();
+	const [searchText, setSearchText] = useState("");
+	const [highlightDateOverride, setHighlightDateOverride] = useState(false);
+
+	const activeFilters = useMemo(
+		() => ({
+			searchText,
+			dateFrom: highlightDateOverride ? null : dateRange?.start ?? null,
+			dateTo: highlightDateOverride ? null : dateRange?.end ?? null,
+			dateField: dateField ?? "data_vencimento",
+		}),
+		[searchText, highlightDateOverride, dateRange?.start, dateRange?.end, dateField]
+	);
 
 	useEffect(() => {
 		if (!highlightParam || !highlightTsParam) return;
 		const id = Number(highlightParam);
 		setLocalHighlightId(id);
 		scrolledForHighlightRef.current = null;
-		setActiveFilters((prev) => ({
-			...prev,
-			searchText: "",
-			dateFrom: null,
-			dateTo: null,
-		}));
+		setSearchText("");
+		setHighlightDateOverride(true);
 		const timer = setTimeout(() => setLocalHighlightId(null), 3000);
 		return () => clearTimeout(timer);
 	}, [highlightParam, highlightTsParam]);
+
+	const lastRangeRef = useRef(null);
+	useEffect(() => {
+		const key = `${dateRange?.start}|${dateRange?.end}`;
+		if (lastRangeRef.current !== null && lastRangeRef.current !== key) {
+			setHighlightDateOverride(false);
+		}
+		lastRangeRef.current = key;
+	}, [dateRange?.start, dateRange?.end]);
+
 	const [filterOpen, setFilterOpen] = useState(false);
-	const filterActive = !!(activeFilters.searchText || activeFilters.dateFrom);
+	const [ofxModalOpen, setOfxModalOpen] = useState(false);
+
+	const defaultRange = useMemo(() => buildDefaultHomeDateRange(), []);
+	const filterActive =
+		!!searchText ||
+		(!highlightDateOverride &&
+			(dateRange?.start !== defaultRange.start ||
+				dateRange?.end !== defaultRange.end));
 
 	const [section, setSection] = useState("transacoes");
 	const config = useMemo(() => getSectionConfig(section), [section]);
@@ -106,6 +125,12 @@ export default function Launches() {
 		deleteRecorrenciaScope,
 	} = useLaunchesData({ database, section, family, userData, filters: activeFilters });
 
+	// Recarrega ao voltar de fluxos que alteram dados (ex.: importação OFX navega com highlightTs)
+	useEffect(() => {
+		if (highlightTsParam) loadData(section);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [highlightTsParam]);
+
 	const {
 		editorOpen,
 		editorMode,
@@ -114,6 +139,14 @@ export default function Launches() {
 		setEditorValue,
 		editorCor,
 		setEditorCor,
+		editorIsCorrente,
+		setEditorIsCorrente,
+		editorIsCartao,
+		setEditorIsCartao,
+		editorDiaFechamento,
+		setEditorDiaFechamento,
+		editorDiaVencimento,
+		setEditorDiaVencimento,
 		selectedPessoaId,
 		pessoaOptions,
 		savingEditor,
@@ -192,12 +225,12 @@ export default function Launches() {
 	}, [selectedIds, removerBaixaBulk]);
 
 	const handleCreate = useCallback(() => {
-		if (section === "transacoes") {
-			openIntercept("launches");
-		} else {
-			openCreate();
-		}
-	}, [section, openIntercept, openCreate]);
+		openCreate();
+	}, [openCreate]);
+
+	const handleImportOfx = useCallback(() => {
+		setOfxModalOpen(true);
+	}, []);
 
 	const contentStyle = useMemo(
 		() => ({
@@ -306,7 +339,11 @@ export default function Launches() {
 					config={config}
 					colors={colors}
 					onCreate={handleCreate}
-					onFilter={() => setFilterOpen(true)}
+					onFilter={() => {
+						setHighlightDateOverride(false);
+						setFilterOpen(true);
+					}}
+					onImportOfx={handleImportOfx}
 					filterActive={filterActive}
 				/>
 				{selectionMode && section === "transacoes" && (
@@ -327,6 +364,7 @@ export default function Launches() {
 			config,
 			colors,
 			handleCreate,
+			handleImportOfx,
 			selectionMode,
 			selectedIds,
 			selectedItems,
@@ -381,6 +419,14 @@ export default function Launches() {
 				setEditorValue={setEditorValue}
 				editorCor={editorCor}
 				setEditorCor={setEditorCor}
+				editorIsCorrente={editorIsCorrente}
+				setEditorIsCorrente={setEditorIsCorrente}
+				editorIsCartao={editorIsCartao}
+				setEditorIsCartao={setEditorIsCartao}
+				editorDiaFechamento={editorDiaFechamento}
+				setEditorDiaFechamento={setEditorDiaFechamento}
+				editorDiaVencimento={editorDiaVencimento}
+				setEditorDiaVencimento={setEditorDiaVencimento}
 				selectedPessoaId={selectedPessoaId}
 				pessoaOptions={pessoaOptions}
 				onSelectPessoa={selectPessoaOption}
@@ -408,12 +454,18 @@ export default function Launches() {
 				onApply={handleBulkDarBaixa}
 			/>
 
-			<LaunchesFilterModal
+			<DateFilterModal
 				isOpen={filterOpen}
 				onClose={() => setFilterOpen(false)}
-				onApply={setActiveFilters}
-				initialFilters={activeFilters}
-				colors={colors}
+				showSearch
+				searchText={searchText}
+				onApplySearch={setSearchText}
+			/>
+
+			<OfxImportModal
+				isOpen={ofxModalOpen}
+				onClose={() => setOfxModalOpen(false)}
+				userId={userData?.id ?? null}
 			/>
 		</Box>
 	);

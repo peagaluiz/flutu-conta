@@ -39,6 +39,10 @@ export function buildDefaultHomeDateRange(referenceDate = new Date()) {
 	};
 }
 
+export function buildMonthDateRange(year, monthIndex) {
+	return buildDefaultHomeDateRange(new Date(year, monthIndex, 1));
+}
+
 export function formatHomeDateRangeLabel(startDate, endDate) {
 	if (!startDate && !endDate) return "Sem período";
 	if (!startDate) return formatDate(endDate);

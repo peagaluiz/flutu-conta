@@ -1,6 +1,6 @@
 import React, { useRef, useCallback, useState } from "react";
 import { useWindowDimensions, ScrollView, View, Pressable } from "react-native";
-import { Plus, FileText, ChevronRight, ChevronLeft, SlidersHorizontal } from "lucide-react-native";
+import { Plus, FileText, ChevronRight, ChevronLeft, SlidersHorizontal, FileUp } from "lucide-react-native";
 
 import { Box } from "@/components/ui/box";
 import { HStack } from "@/components/ui/hstack";
@@ -36,6 +36,7 @@ export default function LaunchesHeader({
 	colors,
 	onCreate,
 	onFilter,
+	onImportOfx,
 	filterActive = false,
 }) {
 	const { width: screenWidth } = useWindowDimensions();
@@ -266,6 +267,11 @@ export default function LaunchesHeader({
 								/>
 							)}
 						</Pressable>
+						{section === "transacoes" && onImportOfx ? (
+							<Pressable onPress={onImportOfx} style={{ padding: 6 }}>
+								<FileUp size={18} color={colors.textSecondary} />
+							</Pressable>
+						) : null}
 						<Button size="sm" onPress={onCreate}>
 							<ButtonIcon as={Plus} />
 							<ButtonText>Novo</ButtonText>

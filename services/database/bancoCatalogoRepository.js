@@ -10,11 +10,18 @@ export function createBancoCatalogoRepository() {
         fetchAndCacheCatalog: async () => {
             if (Platform.OS === "web" || !db) return;
 
-            // Verifica se o cache ainda é fresco
+            // Verifica se o cache ainda é fresco. Só respeita a trava de staleness
+            // se já existir ao menos uma logo em cache — assim, quando novas logos
+            // forem cadastradas no Supabase, um cache antigo (sem logos) se atualiza
+            // na hora em vez de esperar a janela de 7 dias.
             const newest = await db.getFirstAsync(
                 `SELECT cached_at FROM banco_catalogo ORDER BY cached_at DESC LIMIT 1`
             );
-            if (newest?.cached_at) {
+            const logoCount = await db.getFirstAsync(
+                `SELECT COUNT(*) AS n FROM banco_catalogo WHERE logo_url IS NOT NULL`
+            );
+            const hasCachedLogos = Number(logoCount?.n ?? 0) > 0;
+            if (hasCachedLogos && newest?.cached_at) {
                 const age = Date.now() - new Date(newest.cached_at).getTime();
                 if (age < CATALOG_STALE_MS) return;
             }

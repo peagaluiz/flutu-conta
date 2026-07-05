@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import { ScrollView, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ChevronRight } from "lucide-react-native";
+import { ChevronRight, Pencil, Scale } from "lucide-react-native";
 import { Box } from "@/components/ui/box";
 import { HStack } from "@/components/ui/hstack";
 import { VStack } from "@/components/ui/vstack";
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/actionsheet";
 import { formatCurrency, formatDate } from "@/utils/finance/helpers";
 import { PrevistaBadge } from "@/components/finance/PrevistaBadge";
+import { StatusBaixaBadge } from "@/components/finance/dashboard/StatusBaixaBadge";
 
 const GREEN = "#16A34A";
 const RED = "#DC2626";
@@ -28,6 +29,8 @@ export function FinanceDetailSheet({
 	items,
 	colors,
 	onItemPress,
+	saldoInicial,
+	onPressSaldoInicial,
 }) {
 	const insets = useSafeAreaInsets();
 	const { height: screenHeight } = useWindowDimensions();
@@ -37,11 +40,19 @@ export function FinanceDetailSheet({
 			items.reduce((acc, it) => {
 				const v = Number(it.valor || 0);
 				return acc + (it.tipo === "receber" ? v : -v);
-			}, 0),
+			}, Number(saldoInicial || 0)),
+		[items, saldoInicial]
+	);
+
+	const sorted = useMemo(
+		() =>
+			[...items].sort((a, b) =>
+				a.tipo === b.tipo ? 0 : a.tipo === "receber" ? -1 : 1
+			),
 		[items]
 	);
 
-	const visible = items.slice(0, MAX_VISIBLE);
+	const visible = sorted.slice(0, MAX_VISIBLE);
 
 	return (
 		<Actionsheet isOpen={isOpen} onClose={onClose}>
@@ -97,6 +108,62 @@ export function FinanceDetailSheet({
 					}}
 					showsVerticalScrollIndicator={false}
 				>
+					{saldoInicial != null ? (
+						<Pressable
+							onPress={onPressSaldoInicial}
+							style={{
+								backgroundColor: colors.surfaceMuted,
+								borderRadius: 12,
+								borderWidth: 1,
+								borderColor: colors.border,
+								paddingVertical: 10,
+								paddingHorizontal: 12,
+								marginBottom: 8,
+							}}
+						>
+							<HStack className="items-center">
+								<Box
+									style={{
+										width: 4,
+										alignSelf: "stretch",
+										minHeight: 32,
+										borderRadius: 4,
+										backgroundColor: colors.textSecondary,
+										marginRight: 10,
+									}}
+								/>
+								<HStack className="flex-1 items-center gap-2 pr-2">
+									<Scale size={16} color={colors.textSecondary} />
+									<VStack>
+										<Text
+											className="text-sm font-medium"
+											style={{ color: colors.textPrimary }}
+										>
+											Saldo inicial
+										</Text>
+										<Text
+											className="text-xs"
+											style={{ color: colors.textSecondary }}
+										>
+											Sobra dos períodos anteriores
+										</Text>
+									</VStack>
+								</HStack>
+								<Text
+									className="text-sm font-bold"
+									style={{ color: colors.textPrimary }}
+								>
+									{formatCurrency(Number(saldoInicial || 0))}
+								</Text>
+								<Pencil
+									size={15}
+									color={colors.textSecondary}
+									style={{ marginLeft: 6 }}
+								/>
+							</HStack>
+						</Pressable>
+					) : null}
+
 					{visible.length === 0 ? (
 						<Box className="items-center justify-center py-10">
 							<Text
@@ -146,7 +213,12 @@ export function FinanceDetailSheet({
 													</Text>
 													{item.is_ghost ? (
 														<PrevistaBadge colors={colors} />
-													) : null}
+													) : (
+														<StatusBaixaBadge
+															status={item.status}
+															colors={colors}
+														/>
+													)}
 												</HStack>
 												<Text
 													className="text-xs"

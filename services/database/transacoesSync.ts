@@ -19,6 +19,7 @@ export type SyncSummary = {
 		imobilizado: { processed: number; synced: number; errors: number };
 		transacoes: { processed: number; synced: number; errors: number };
 		banco: { processed: number; synced: number; errors: number };
+		cartao_faturas: { processed: number; synced: number; errors: number };
 		recorrencias: { processed: number; synced: number; errors: number };
 		recorrencia_transacoes: { processed: number; synced: number; errors: number };
 	};
@@ -39,6 +40,7 @@ function createEmptySummary(): SyncSummary {
 			imobilizado: emptyTableSummary(),
 			transacoes: emptyTableSummary(),
 			banco: emptyTableSummary(),
+			cartao_faturas: emptyTableSummary(),
 			recorrencias: emptyTableSummary(),
 			recorrencia_transacoes: emptyTableSummary(),
 		},
@@ -69,6 +71,10 @@ function mergeSummary(target: SyncSummary, source: SyncSummary) {
 	target.tables.banco.processed += source.tables.banco.processed;
 	target.tables.banco.synced += source.tables.banco.synced;
 	target.tables.banco.errors += source.tables.banco.errors;
+
+	target.tables.cartao_faturas.processed += source.tables.cartao_faturas.processed;
+	target.tables.cartao_faturas.synced += source.tables.cartao_faturas.synced;
+	target.tables.cartao_faturas.errors += source.tables.cartao_faturas.errors;
 
 	target.tables.recorrencias.processed += source.tables.recorrencias.processed;
 	target.tables.recorrencias.synced += source.tables.recorrencias.synced;
@@ -245,6 +251,24 @@ async function resolveBancoLocalId(remoteId?: number | null) {
 	return row?.id_banco ?? null;
 }
 
+async function resolveFaturaRemoteId(localId?: number | null) {
+	if (!db || !localId) return localId ?? null;
+	const row = await db.getFirstAsync<any>(
+		`SELECT remote_id FROM cartao_faturas WHERE id_fatura = ? LIMIT 1`,
+		localId
+	);
+	return row?.remote_id ?? localId;
+}
+
+async function resolveFaturaLocalId(remoteId?: number | null) {
+	if (!db || !remoteId) return remoteId ?? null;
+	const row = await db.getFirstAsync<any>(
+		`SELECT id_fatura FROM cartao_faturas WHERE remote_id = ? LIMIT 1`,
+		remoteId
+	);
+	return row?.id_fatura ?? null;
+}
+
 async function resolvePessoaLocalId(remoteId?: number | null) {
 	if (!db || !remoteId) return remoteId ?? null;
 
@@ -311,6 +335,7 @@ async function toTransacaoPayload(row: any) {
 	const remotePessoa = await resolvePessoaRemoteId(row.id_pessoa ?? null);
 	const remoteImobilizado = await resolveImobilizadoRemoteId(row.id_imobilizado ?? null);
 	const remoteBanco = await resolveBancoRemoteId(row.id_banco ?? null);
+	const remoteFatura = await resolveFaturaRemoteId(row.id_fatura ?? null);
 
 	return {
 		tipo: row.tipo,
@@ -328,6 +353,10 @@ async function toTransacaoPayload(row: any) {
 		data_baixa: row.data_baixa ?? null,
 		status: row.status ?? "pendente",
 		observacao: row.observacao ?? null,
+		id_fatura: remoteFatura,
+		parcela_atual: row.parcela_atual ?? null,
+		parcela_total: row.parcela_total ?? null,
+		ofx_fitid: row.ofx_fitid ?? null,
 		created_at: row.created_at ?? nowISO(),
 		updated_at: row.updated_at ?? nowISO(),
 		json: row.json ?? null,
@@ -921,6 +950,11 @@ async function upsertRemoteBancoLocally(remote: any) {
 		if (
 			String(existing?.nome || "") === String(remote?.nome || "") &&
 			String(existing?.cor_hex || "") === String(remote?.cor_hex || "") &&
+			String(existing?.tipo || "corrente") === String(remote?.tipo || "corrente") &&
+			Number(existing?.is_corrente ?? 1) === Number(remote?.is_corrente ?? 1) &&
+			Number(existing?.is_cartao ?? 0) === Number(remote?.is_cartao ?? 0) &&
+			Number(existing?.dia_fechamento || 0) === Number(remote?.dia_fechamento || 0) &&
+			Number(existing?.dia_vencimento || 0) === Number(remote?.dia_vencimento || 0) &&
 			String(existing?.user_id || "") === String(remote?.user_id || "") &&
 			Number(existing?.family_id || 0) === Number(remote?.family_id || 0) &&
 			Number(existing?.is_family_shared || 0) === Number(remote?.is_family_shared || 0) &&
@@ -935,6 +969,11 @@ async function upsertRemoteBancoLocally(remote: any) {
 			UPDATE banco
 			SET nome = COALESCE(?, nome),
 				cor_hex = COALESCE(?, cor_hex),
+				tipo = COALESCE(?, tipo),
+				is_corrente = ?,
+				is_cartao = ?,
+				dia_fechamento = ?,
+				dia_vencimento = ?,
 				user_id = COALESCE(?, user_id),
 				family_id = ?,
 				is_family_shared = ?,
@@ -946,6 +985,11 @@ async function upsertRemoteBancoLocally(remote: any) {
 			`,
 			remote.nome ?? null,
 			remote.cor_hex ?? null,
+			remote.tipo ?? null,
+			Number(remote.is_corrente ?? 1),
+			Number(remote.is_cartao ?? 0),
+			remote.dia_fechamento ?? null,
+			remote.dia_vencimento ?? null,
 			remote.user_id ?? null,
 			remote.family_id ?? null,
 			Number(remote.is_family_shared ?? 0),
@@ -959,13 +1003,18 @@ async function upsertRemoteBancoLocally(remote: any) {
 	const inserted = await db.runAsync(
 		`
 		INSERT INTO banco (
-			remote_id, nome, cor_hex, user_id, family_id, is_family_shared,
+			remote_id, nome, cor_hex, tipo, is_corrente, is_cartao, dia_fechamento, dia_vencimento, user_id, family_id, is_family_shared,
 			data_sync, sync_status, synced, deleted
-		) VALUES (?, ?, ?, ?, ?, ?, ?, 'synced', 1, 0)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', 1, 0)
 		`,
 		remote.id_banco,
 		remote.nome ?? "",
 		remote.cor_hex ?? "#6B7280",
+		remote.tipo ?? "corrente",
+		Number(remote.is_corrente ?? 1),
+		Number(remote.is_cartao ?? 0),
+		remote.dia_fechamento ?? null,
+		remote.dia_vencimento ?? null,
 		remote.user_id ?? null,
 		remote.family_id ?? null,
 		Number(remote.is_family_shared ?? 0),
@@ -1015,6 +1064,11 @@ async function syncBancoInternal(): Promise<SyncSummary> {
 			const payload = {
 				nome: row.nome,
 				cor_hex: row.cor_hex,
+				tipo: row.tipo ?? "corrente",
+				is_corrente: Number(row.is_corrente ?? 1),
+				is_cartao: Number(row.is_cartao ?? 0),
+				dia_fechamento: row.dia_fechamento ?? null,
+				dia_vencimento: row.dia_vencimento ?? null,
 				user_id: row.user_id ?? null,
 				family_id: row.family_id ?? null,
 				is_family_shared: Number(row.is_family_shared ?? 0),
@@ -1071,6 +1125,202 @@ async function syncRemoteBancoDown(): Promise<SyncSummary> {
 		} catch {
 			summary.errors += 1;
 			summary.tables.banco.errors += 1;
+		}
+	}
+
+	return summary;
+}
+
+async function resolveTransacaoRemoteId(localId?: number | null) {
+	if (!db || !localId) return localId ?? null;
+	const row = await db.getFirstAsync<any>(
+		`SELECT remote_id FROM transacoes WHERE id_transacao = ? LIMIT 1`,
+		localId
+	);
+	return row?.remote_id ?? null;
+}
+
+async function resolveTransacaoLocalId(remoteId?: number | null) {
+	if (!db || !remoteId) return remoteId ?? null;
+	const row = await db.getFirstAsync<any>(
+		`SELECT id_transacao FROM transacoes WHERE remote_id = ? LIMIT 1`,
+		remoteId
+	);
+	return row?.id_transacao ?? null;
+}
+
+async function upsertRemoteCartaoFaturaLocally(remote: any) {
+	if (!db || !remote?.id_fatura) return null;
+
+	const localBancoId = await resolveBancoLocalId(remote.id_banco ?? null);
+	const localPagamentoId = await resolveTransacaoLocalId(remote.id_transacao_pagamento ?? null);
+
+	const existing = await db.getFirstAsync<any>(
+		`SELECT * FROM cartao_faturas WHERE remote_id = ? LIMIT 1`,
+		remote.id_fatura
+	);
+
+	if (existing) {
+		if (Number(existing?.deleted || 0) === 1) return existing;
+
+		await db.runAsync(
+			`
+			UPDATE cartao_faturas
+			SET id_banco = COALESCE(?, id_banco),
+				mes_referencia = COALESCE(?, mes_referencia),
+				data_fechamento = ?,
+				data_vencimento = ?,
+				valor_total = ?,
+				status = COALESCE(?, status),
+				id_transacao_pagamento = ?,
+				family_id = ?,
+				is_family_shared = ?,
+				user_id = COALESCE(?, user_id),
+				data_sync = ?,
+				sync_status = 'synced',
+				synced = 1,
+				deleted = 0
+			WHERE id_fatura = ?
+			`,
+			localBancoId,
+			remote.mes_referencia ?? null,
+			remote.data_fechamento ?? null,
+			remote.data_vencimento ?? null,
+			Number(remote.valor_total ?? 0),
+			remote.status ?? null,
+			localPagamentoId,
+			remote.family_id ?? null,
+			Number(remote.is_family_shared ?? 0),
+			remote.user_id ?? null,
+			nowISO(),
+			existing.id_fatura
+		);
+		return db.getFirstAsync<any>(`SELECT * FROM cartao_faturas WHERE id_fatura = ? LIMIT 1`, existing.id_fatura);
+	}
+
+	const inserted = await db.runAsync(
+		`
+		INSERT INTO cartao_faturas (
+			remote_id, id_banco, mes_referencia, data_fechamento, data_vencimento, valor_total,
+			status, id_transacao_pagamento, family_id, is_family_shared, user_id,
+			data_sync, sync_status, synced, deleted
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', 1, 0)
+		`,
+		remote.id_fatura,
+		localBancoId,
+		remote.mes_referencia ?? null,
+		remote.data_fechamento ?? null,
+		remote.data_vencimento ?? null,
+		Number(remote.valor_total ?? 0),
+		remote.status ?? "aberta",
+		localPagamentoId,
+		remote.family_id ?? null,
+		Number(remote.is_family_shared ?? 0),
+		remote.user_id ?? null,
+		nowISO()
+	);
+	return db.getFirstAsync<any>(`SELECT * FROM cartao_faturas WHERE id_fatura = ? LIMIT 1`, inserted.lastInsertRowId);
+}
+
+async function syncCartaoFaturasInternal(): Promise<SyncSummary> {
+	if (!db || Platform.OS === "web") return createEmptySummary();
+
+	const summary = createEmptySummary();
+	const rows = await db.getAllAsync<any>(
+		`
+		SELECT * FROM cartao_faturas
+		WHERE (sync_status = 'pending' OR sync_status = 'error' OR synced = 0)
+		ORDER BY id_fatura ASC
+		LIMIT 100
+		`
+	);
+
+	for (const row of rows) {
+		summary.processed += 1;
+		summary.tables.cartao_faturas.processed += 1;
+
+		try {
+			if (Number(row?.deleted || 0) === 1) {
+				if (row.remote_id) {
+					const { error } = await supabase
+						.from("cartao_faturas")
+						.update({ deleted: 1, updated_at: nowISO() })
+						.eq("id_fatura", row.remote_id);
+					if (error) throw error;
+				}
+				await markRowAsSynced("cartao_faturas", "id_fatura", row.id_fatura, row.remote_id ?? null);
+				summary.synced += 1;
+				summary.tables.cartao_faturas.synced += 1;
+				continue;
+			}
+
+			const remoteBanco = await resolveBancoRemoteId(row.id_banco ?? null);
+			const remotePagamento = await resolveTransacaoRemoteId(row.id_transacao_pagamento ?? null);
+			const payload = {
+				id_banco: remoteBanco,
+				mes_referencia: row.mes_referencia,
+				data_fechamento: row.data_fechamento ?? null,
+				data_vencimento: row.data_vencimento ?? null,
+				valor_total: Number(row.valor_total ?? 0),
+				status: row.status ?? "aberta",
+				id_transacao_pagamento: remotePagamento,
+				family_id: row.family_id ?? null,
+				is_family_shared: Number(row.is_family_shared ?? 0),
+				user_id: row.user_id ?? null,
+			};
+
+			if (row.remote_id) {
+				const { error } = await supabase
+					.from("cartao_faturas")
+					.update({ ...payload, updated_at: nowISO() })
+					.eq("id_fatura", row.remote_id);
+				if (error) throw error;
+				await markRowAsSynced("cartao_faturas", "id_fatura", row.id_fatura, row.remote_id);
+			} else {
+				const { data: inserted, error } = await supabase
+					.from("cartao_faturas")
+					.insert(payload)
+					.select("id_fatura")
+					.single();
+				if (error) throw error;
+				await markRowAsSynced("cartao_faturas", "id_fatura", row.id_fatura, (inserted as any)?.id_fatura ?? null);
+			}
+
+			summary.synced += 1;
+			summary.tables.cartao_faturas.synced += 1;
+		} catch (error) {
+			await markRowAsError("cartao_faturas", "id_fatura", row.id_fatura);
+			summary.errors += 1;
+			summary.tables.cartao_faturas.errors += 1;
+			console.warn("[syncCartaoFaturas] erro", row?.id_fatura, error);
+		}
+	}
+
+	return summary;
+}
+
+async function syncRemoteCartaoFaturasDown(): Promise<SyncSummary> {
+	if (!db || Platform.OS === "web") return createEmptySummary();
+
+	const { data, error } = await supabase
+		.from("cartao_faturas")
+		.select("*")
+		.order("id_fatura", { ascending: true });
+	if (error) throw error.message;
+
+	const summary = createEmptySummary();
+	const rows = Array.isArray(data) ? data : [];
+
+	for (const row of rows) {
+		summary.processed += 1;
+		summary.tables.cartao_faturas.processed += 1;
+		try {
+			await upsertRemoteCartaoFaturaLocally(row);
+			summary.synced += 1;
+			summary.tables.cartao_faturas.synced += 1;
+		} catch {
+			summary.errors += 1;
+			summary.tables.cartao_faturas.errors += 1;
 		}
 	}
 
@@ -1266,13 +1516,18 @@ async function syncAllPendingInternal(onProgress?: (step: string) => void) {
 	);
 	mergeSummary(full, imobilizadoSummary);
 
-	onProgress?.("Enviando lançamentos...");
-	const transacoesSummary = await syncPendingTransacoesInternal();
-	mergeSummary(full, transacoesSummary);
-
+	// Banco e faturas sobem antes das transações para que id_banco/id_fatura resolvam para remote_id
 	onProgress?.("Enviando bancos...");
 	const bancoSummary = await syncBancoInternal();
 	mergeSummary(full, bancoSummary);
+
+	onProgress?.("Enviando faturas...");
+	const faturaSummary = await syncCartaoFaturasInternal();
+	mergeSummary(full, faturaSummary);
+
+	onProgress?.("Enviando lançamentos...");
+	const transacoesSummary = await syncPendingTransacoesInternal();
+	mergeSummary(full, transacoesSummary);
 
 	onProgress?.("Baixando dados do servidor...");
 	const pessoaDown = await syncRemoteTableDown("pessoa");
@@ -1284,10 +1539,13 @@ async function syncAllPendingInternal(onProgress?: (step: string) => void) {
 	const imobilizadoDown = await syncRemoteTableDown("imobilizado");
 	mergeSummary(full, imobilizadoDown);
 
-	// Banco deve vir antes de transacoes para que resolveBancoLocalId funcione
+	// Banco e faturas devem vir antes de transacoes para que resolveBancoLocalId/resolveFaturaLocalId funcionem
 	onProgress?.("Atualizando bancos...");
 	const bancoDown = await syncRemoteBancoDown();
 	mergeSummary(full, bancoDown);
+
+	const faturasDown = await syncRemoteCartaoFaturasDown();
+	mergeSummary(full, faturasDown);
 
 	const transacoesDown = await syncRemoteTableDown("transacoes");
 	mergeSummary(full, transacoesDown);
@@ -1357,6 +1615,7 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
 	const localPessoaId = await resolvePessoaLocalId(remote.id_pessoa ?? null);
 	const localImobilizadoId = await resolveImobilizadoLocalId(remote.id_imobilizado ?? null);
 	const localBancoId = await resolveBancoLocalId(remote.id_banco ?? null);
+	const localFaturaId = await resolveFaturaLocalId(remote.id_fatura ?? null);
 
 	const existingByRemote = await db.getFirstAsync<any>(
 		`
@@ -1400,6 +1659,10 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
 			String(existingByRemote?.status || "") === String(remote?.status || "") &&
 			String(existingByRemote?.observacao || "") === String(remote?.observacao || "") &&
 			String(existingByRemote?.json || "") === String(remote?.json || "") &&
+			Number(existingByRemote?.id_fatura || 0) === Number(localFaturaId || 0) &&
+			Number(existingByRemote?.parcela_atual || 0) === Number(remote?.parcela_atual || 0) &&
+			Number(existingByRemote?.parcela_total || 0) === Number(remote?.parcela_total || 0) &&
+			String(existingByRemote?.ofx_fitid || "") === String(remote?.ofx_fitid || "") &&
 			String(existingByRemote?.sync_status || "") === "synced" &&
 			Number(existingByRemote?.synced || 0) === 1;
 
@@ -1425,6 +1688,10 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
             data_baixa = ?,
             status = COALESCE(?, status),
             observacao = ?,
+            id_fatura = ?,
+            parcela_atual = ?,
+            parcela_total = ?,
+            ofx_fitid = ?,
             updated_at = ?,
             data_sync = ?,
             sync_status = 'synced',
@@ -1448,6 +1715,10 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
 			remote.data_baixa ?? null,
 			remote.status ?? null,
 			remote.observacao ?? null,
+			localFaturaId,
+			remote.parcela_atual ?? null,
+			remote.parcela_total ?? null,
+			remote.ofx_fitid ?? null,
 			remote.updated_at ?? nowISO(),
 			nowISO(),
 			remote.json ?? null,
@@ -1488,13 +1759,17 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
         status,
         observacao,
         json,
+        id_fatura,
+        parcela_atual,
+        parcela_total,
+        ofx_fitid,
         created_at,
         updated_at,
         data_sync,
         sync_status,
         synced,
         deleted
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
 		remote.id_transacao,
 		remote.tipo ?? null,
@@ -1513,6 +1788,10 @@ export async function upsertRemoteTransacaoLocally(remote: any) {
 		remote.status ?? "pendente",
 		remote.observacao ?? null,
 		remote.json ?? null,
+		localFaturaId,
+		remote.parcela_atual ?? null,
+		remote.parcela_total ?? null,
+		remote.ofx_fitid ?? null,
 		remote.created_at ?? nowISO(),
 		remote.updated_at ?? null,
 		nowISO(),

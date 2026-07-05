@@ -14,6 +14,7 @@ const FALLBACK_CATEGORIES = [
 	{ id: null, nome: "Salário",       icone: "Briefcase",      cor_hex: "#06B6D4", ordem: 7 },
 	{ id: null, nome: "Investimentos", icone: "TrendingUp",     cor_hex: "#22C55E", ordem: 8 },
 	{ id: null, nome: "Outros",        icone: "HelpCircle",     cor_hex: "#6B7280", ordem: 9 },
+	{ id: null, nome: "Ajuste",        icone: "Scale",          cor_hex: "#64748B", ordem: 10 },
 ];
 
 export function createCategoriaCatalogoRepository() {
@@ -100,6 +101,49 @@ export function createCategoriaCatalogoRepository() {
 			}
 
 			return FALLBACK_CATEGORIES;
+		},
+
+		getCategoriaIdByName: async (nome) => {
+			if (Platform.OS !== "web" && db) {
+				try {
+					const row = await db.getFirstAsync(
+						`SELECT id FROM categoria_catalogo WHERE nome = ? AND ativo = 1 LIMIT 1`,
+						nome
+					);
+					if (row?.id) return row.id;
+				} catch {
+					// tabela local ausente — tenta remoto
+				}
+			}
+
+			try {
+				const { data } = await supabase
+					.from("categoria_catalogo")
+					.select("id, nome, icone, cor_hex, ordem, ativo")
+					.eq("nome", nome)
+					.eq("ativo", true)
+					.limit(1);
+				const remote = data?.[0];
+				if (!remote?.id) return null;
+
+				if (Platform.OS !== "web" && db) {
+					await db.runAsync(
+						`INSERT OR REPLACE INTO categoria_catalogo
+						    (id, nome, icone, cor_hex, ordem, ativo, cached_at)
+						 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+						remote.id,
+						remote.nome,
+						remote.icone ?? null,
+						remote.cor_hex,
+						remote.ordem ?? 0,
+						remote.ativo ? 1 : 0,
+						nowISO()
+					);
+				}
+				return remote.id;
+			} catch {
+				return null;
+			}
 		},
 	};
 }

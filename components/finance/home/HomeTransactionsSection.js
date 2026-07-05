@@ -1,6 +1,16 @@
 import { useState } from "react";
 import { Alert } from "react-native";
-import { CheckCircle, MoreHorizontal, Pencil, Trash2, Wallet, XCircle } from "lucide-react-native";
+import {
+	CheckCircle,
+	ChevronDown,
+	ChevronUp,
+	CreditCard,
+	MoreHorizontal,
+	Pencil,
+	Trash2,
+	Wallet,
+	XCircle,
+} from "lucide-react-native";
 
 import { Box } from "@/components/ui/box";
 import { HStack } from "@/components/ui/hstack";
@@ -11,9 +21,74 @@ import { DatePickerDialog } from "@/components/ui/DatePickerDialog";
 import { ActionListModal } from "@/components/ui/ActionListModal";
 import { useTheme } from "@/components/ui/gluestack-ui-provider/ThemeProvider/ThemeProvider";
 import { getThemeColors } from "@/constants/colors";
-import { toISODateString } from "@/utils/finance/helpers";
+import { formatCurrency, formatDate, toISODateString } from "@/utils/finance/helpers";
 import { LancamentoListItem } from "@/components/finance/home/LancamentoListItem";
 import { LancamentoSummary } from "@/components/finance/home/LancamentoSummary";
+
+const FATURA_STATUS_LABEL = { aberta: "Aberta", fechada: "Fechada", paga: "Paga" };
+
+function FaturaGroupRow({ group, colors, expanded, onToggle, onPressItem }) {
+	return (
+		<Box className="mb-1">
+			<Pressable onPress={onToggle}>
+				<Box
+					className="rounded-lg border px-3 py-2"
+					style={{ backgroundColor: colors.surface, borderColor: colors.border }}
+				>
+					{/* Linha 1: ícone + título + valor + chevron */}
+					<Box className="flex-row items-center justify-between">
+						<Box className="flex-row items-center gap-3 flex-1 mr-2">
+							<CreditCard size={22} color="#F59E0B" />
+							<Text
+								className="font-medium flex-1"
+								style={{ color: colors.textPrimary }}
+								numberOfLines={1}
+								ellipsizeMode="tail"
+							>
+								Fatura {group.banco_nome}
+							</Text>
+						</Box>
+						<Box className="flex-row items-center gap-1">
+							<Text className="font-semibold" style={{ color: colors.textPrimary }}>
+								{formatCurrency(group.valor)}
+							</Text>
+							{expanded ? (
+								<ChevronUp size={16} color={colors.textSecondary} />
+							) : (
+								<ChevronDown size={16} color={colors.textSecondary} />
+							)}
+						</Box>
+					</Box>
+
+					{/* Linha 2: data • qtd • status */}
+					<Box className="flex-row items-center justify-between mt-0.5">
+						<Text className="text-xs" style={{ color: colors.textSecondary }}>
+							{formatDate(group.data_vencimento)} •{" "}
+							{group.items.length} lançamento{group.items.length > 1 ? "s" : ""}
+						</Text>
+						<Text className="text-xs" style={{ color: colors.textSecondary }}>
+							{FATURA_STATUS_LABEL[group.status] ?? group.status}
+						</Text>
+					</Box>
+				</Box>
+			</Pressable>
+
+			{expanded ? (
+				<Box className="mt-1 gap-1">
+					{group.items.map((child) => (
+						<LancamentoListItem
+							key={String(child.id_transacao)}
+							item={child}
+							iconColor="#F59E0B"
+							onPress={() => onPressItem(child)}
+							onLongPress={undefined}
+						/>
+					))}
+				</Box>
+			) : null}
+		</Box>
+	);
+}
 
 export function HomeTransactionsSection({
 	loading,
@@ -30,6 +105,14 @@ export function HomeTransactionsSection({
 
 	const [menuItem, setMenuItem] = useState(null);
 	const [showDatePicker, setShowDatePicker] = useState(false);
+	const [expandedFaturas, setExpandedFaturas] = useState(() => new Set());
+
+	const toggleFatura = (idFatura) =>
+		setExpandedFaturas((prev) => {
+			const next = new Set(prev);
+			next.has(idFatura) ? next.delete(idFatura) : next.add(idFatura);
+			return next;
+		});
 
 	const closeMenu = () => setMenuItem(null);
 
@@ -100,14 +183,25 @@ export function HomeTransactionsSection({
 				</Text>
 			) : (
 				<Box className="gap-1">
-					{items.slice(0, previewLimit).map((item) => (
-						<LancamentoListItem
-							key={String(item.id_transacao)}
-							item={item}
-							onPress={() => setMenuItem(item)}
-							onLongPress={undefined}
-						/>
-					))}
+					{items.slice(0, previewLimit).map((item) =>
+						item.is_fatura_group ? (
+							<FaturaGroupRow
+								key={String(item.id_transacao)}
+								group={item}
+								colors={colors}
+								expanded={expandedFaturas.has(item.id_fatura)}
+								onToggle={() => toggleFatura(item.id_fatura)}
+								onPressItem={(child) => setMenuItem(child)}
+							/>
+						) : (
+							<LancamentoListItem
+								key={String(item.id_transacao)}
+								item={item}
+								onPress={() => setMenuItem(item)}
+								onLongPress={undefined}
+							/>
+						)
+					)}
 
 					{items.length > previewLimit ? (
 						<Pressable onPress={onPressSeeAll}>
