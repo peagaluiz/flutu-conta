@@ -1,8 +1,6 @@
 import { useCallback } from "react";
 import { View } from "react-native";
-import { AppModal, AppModalHeader } from "@/components/ui/app-modal";
-import { HStack } from "@/components/ui/hstack";
-import { Button, ButtonText } from "@/components/ui/button";
+import { AppModal, AppModalHeader, AppModalFooter } from "@/components/ui/app-modal";
 import { useFamilyModal } from "@/state/FamilyModalContext";
 import { useFamilyManagement } from "@/hooks/useFamilyManagement";
 import { FamilyManagementView, getFamilyTitle } from "@/components/family/FamilyManagementView";
@@ -15,11 +13,7 @@ function FamilyModalBody({ colors, onClose }) {
 		<View style={{ width: "100%" }}>
 			<AppModalHeader title={getFamilyTitle(fm)} onClose={onClose} colors={colors} />
 			<FamilyManagementView fm={fm} colors={colors} />
-			<HStack className="w-full justify-end px-4 pb-4">
-				<Button action="secondary" size="lg" variant="outline" onPress={onClose}>
-					<ButtonText>Fechar</ButtonText>
-				</Button>
-			</HStack>
+			<AppModalFooter onClose={onClose} />
 		</View>
 	);
 }

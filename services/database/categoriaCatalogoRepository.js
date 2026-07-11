@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 import { supabase } from "@/services/supabase/client";
 import { db, nowISO } from "@/services/database/db";
+import { loadRemoteCategoryCatalog } from "@/services/database/categoryCatalogRead";
 
 const CATALOG_STALE_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias
 
@@ -63,12 +64,9 @@ export function createCategoriaCatalogoRepository() {
 		listCategories: async () => {
 			if (Platform.OS === "web") {
 				try {
-					const { data } = await supabase
-						.from("categoria_catalogo")
-						.select("id, nome, icone, cor_hex, ordem, ativo")
-						.eq("ativo", true)
-						.order("ordem", { ascending: true })
-						.order("nome",  { ascending: true });
+					const data = (await loadRemoteCategoryCatalog()).filter(
+						(item) => item.ativo !== false
+					);
 					if (data?.length) return data;
 				} catch {
 					// sem internet

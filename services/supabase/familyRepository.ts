@@ -33,6 +33,7 @@ export type FamilySnapshot = {
     membership: FamilyMember | null;
     members: FamilyMember[];
     invites: FamilyInvite[];
+    pendingInvite: PendingInvite | null;
 };
 
 export type PendingInvite = {
@@ -51,8 +52,23 @@ async function getCurrentUserId() {
     return userId;
 }
 
-export async function getFamilySnapshot(): Promise<FamilySnapshot> {
-    const userId = await getCurrentUserId();
+export async function getFamilySnapshot(currentUserId?: string | null): Promise<FamilySnapshot> {
+    const { data: rpcData, error: rpcError } = await supabase.rpc("get_family_snapshot");
+    if (!rpcError && rpcData && typeof rpcData === "object") {
+        const snapshot = rpcData as unknown as FamilySnapshot;
+        return {
+            family: snapshot.family ?? null,
+            membership: snapshot.membership ?? null,
+            members: Array.isArray(snapshot.members) ? snapshot.members : [],
+            invites: Array.isArray(snapshot.invites) ? snapshot.invites : [],
+            pendingInvite: snapshot.pendingInvite ?? (snapshot as any).pending_invite ?? null,
+        };
+    }
+    if (rpcError && rpcError.code !== "42883" && rpcError.code !== "PGRST202") {
+        throw new Error(rpcError.message || "Falha ao carregar família");
+    }
+
+    const userId = currentUserId || await getCurrentUserId();
 
     const { data: membershipData, error: membershipError } = await supabase
         .from("familia_membros")
@@ -69,6 +85,7 @@ export async function getFamilySnapshot(): Promise<FamilySnapshot> {
             membership: null,
             members: [],
             invites: [],
+            pendingInvite: await getPendingInviteForCurrentUser().catch(() => null),
         };
     }
 
@@ -122,6 +139,7 @@ export async function getFamilySnapshot(): Promise<FamilySnapshot> {
         membership: (membershipData as FamilyMember) ?? null,
         members,
         invites: (invitesData ?? []) as FamilyInvite[],
+        pendingInvite: null,
     };
 }
 
@@ -193,11 +211,13 @@ export async function inviteFamilyMember(familyId: number, email: string) {
 
     if (error) throw new Error(error.message || "Falha ao enviar convite");
 
-    supabase
-        .from("familias")
-        .select("nome")
-        .eq("id", familyId)
-        .maybeSingle()
+    void Promise.resolve(
+        supabase
+            .from("familias")
+            .select("nome")
+            .eq("id", familyId)
+            .maybeSingle()
+    )
         .then(({ data: familia }) => {
             supabase.functions.invoke("send-family-invite", {
                 body: {

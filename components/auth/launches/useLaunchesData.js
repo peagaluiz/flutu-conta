@@ -4,11 +4,15 @@ import { loadSectionData } from "@/utils/auth/launches/loaders";
 import { getDeleteAction, getItemKey, filterValidItems } from "@/utils/auth/launches/actions";
 import { getItemType } from "@/utils/auth/launches/sections";
 import { useSyncProgress } from "@/state/SyncProgressContext";
+import { useInsertModal } from "@/state/InsertModalContext";
+import { useSaveFeedback } from "@/state/SaveFeedbackContext";
 
 const PAGE_SIZE = 30;
 
-export function useLaunchesData({ database, section, family, userData, filters = {} }) {
+export function useLaunchesData({ database, section, family, userData, filters = {}, ready = true }) {
 	const { startSync, endSync, updateStep } = useSyncProgress();
+	const notifyDataChanged = useInsertModal()?.notifyDataChanged;
+	const { showSuccess, showError } = useSaveFeedback();
 	const [items, setItems] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [refreshing, setRefreshing] = useState(false);
@@ -33,6 +37,7 @@ export function useLaunchesData({ database, section, family, userData, filters =
 			target,
 			{ silent = false, append = false, page: pageToLoad = 1 } = {}
 		) => {
+			if (!ready || !userData?.id) return;
 			const id = ++loadRef.current;
 			const sectionTarget = target ?? section;
 
@@ -90,10 +95,14 @@ export function useLaunchesData({ database, section, family, userData, filters =
 				if (append && id === loadRef.current) setLoadingMore(false);
 			}
 		},
-		[database, section, visibilityArgs, filters]
+		[database, section, visibilityArgs, filters, ready, userData?.id]
 	);
 
 	useEffect(() => {
+		if (!ready || !userData?.id) {
+			setLoading(true);
+			return;
+		}
 		const isFirstLoad = prevSectionRef.current === null;
 		const sectionChanged = !isFirstLoad && prevSectionRef.current !== section;
 		prevSectionRef.current = section;
@@ -101,7 +110,7 @@ export function useLaunchesData({ database, section, family, userData, filters =
 		setHasMore(true);
 		setLoadingMore(false);
 		loadData(section, { silent: !isFirstLoad && !sectionChanged });
-	}, [section, loadData]);
+	}, [section, loadData, ready, userData?.id]);
 
 	const onRefresh = useCallback(async () => {
 		setRefreshing(true);
@@ -142,8 +151,10 @@ export function useLaunchesData({ database, section, family, userData, filters =
 								setPage(1);
 								setHasMore(true);
 								await loadData(section, { silent: true, page: 1 });
+								notifyDataChanged?.();
+								showSuccess("Excluído!");
 							} catch {
-								Alert.alert("Erro", "Falha ao excluir.");
+								showError("Falha ao excluir.");
 							}
 						},
 					},
@@ -168,14 +179,16 @@ export function useLaunchesData({ database, section, family, userData, filters =
 							setPage(1);
 							setHasMore(true);
 							await loadData(section, { silent: true, page: 1 });
+							notifyDataChanged?.();
+							showSuccess("Excluído!");
 						} catch {
-							Alert.alert("Erro", "Falha ao excluir.");
+							showError("Falha ao excluir.");
 						}
 					},
 				},
 			]);
 		},
-		[database, loadData, section]
+		[database, loadData, section, notifyDataChanged, showSuccess, showError]
 	);
 
 	const syncPessoa = useCallback(
@@ -183,11 +196,12 @@ export function useLaunchesData({ database, section, family, userData, filters =
 			try {
 				await database.syncPessoaPendente(item.nome, item.pending_ids);
 				await loadData("pessoas", { silent: true });
+				notifyDataChanged?.();
 			} catch {
 				Alert.alert("Erro", "Falha ao sincronizar.");
 			}
 		},
-		[database, loadData]
+		[database, loadData, notifyDataChanged]
 	);
 
 	const toggleRecorrenciaStatus = useCallback(
@@ -199,15 +213,17 @@ export function useLaunchesData({ database, section, family, userData, filters =
 					await database.activateRecorrencia(item.uuid);
 				}
 				await loadData("recorrencias", { silent: true, page: 1 });
+				notifyDataChanged?.();
 			} catch {
 				Alert.alert("Erro", "Falha ao atualizar status da recorrência.");
 			}
 		},
-		[database, loadData]
+		[database, loadData, notifyDataChanged]
 	);
 
 	const darBaixa = useCallback(
 		async (item) => {
+			const isRemoving = !item?.is_ghost && item.status !== "pendente";
 			try {
 				if (item?.is_ghost) {
 					await database.materializeRecurrenceOccurrence({
@@ -223,11 +239,13 @@ export function useLaunchesData({ database, section, family, userData, filters =
 				setPage(1);
 				setHasMore(true);
 				await loadData(section, { silent: true, page: 1 });
+				notifyDataChanged?.();
+				showSuccess(isRemoving ? "Baixa removida!" : "Baixa realizada!");
 			} catch {
-				Alert.alert("Erro", "Falha ao atualizar baixa.");
+				showError("Falha ao atualizar baixa.");
 			}
 		},
-		[database, loadData, section]
+		[database, loadData, section, notifyDataChanged, showSuccess, showError]
 	);
 
 	const darBaixaBulk = useCallback(
@@ -237,11 +255,13 @@ export function useLaunchesData({ database, section, family, userData, filters =
 				setPage(1);
 				setHasMore(true);
 				await loadData(section, { silent: true, page: 1 });
+				notifyDataChanged?.();
+				showSuccess("Baixa realizada!");
 			} catch {
-				Alert.alert("Erro", "Falha ao dar baixa.");
+				showError("Falha ao dar baixa.");
 			}
 		},
-		[database, loadData, section]
+		[database, loadData, section, notifyDataChanged, showSuccess, showError]
 	);
 
 	const removerBaixaBulk = useCallback(
@@ -251,11 +271,13 @@ export function useLaunchesData({ database, section, family, userData, filters =
 				setPage(1);
 				setHasMore(true);
 				await loadData(section, { silent: true, page: 1 });
+				notifyDataChanged?.();
+				showSuccess("Baixa removida!");
 			} catch {
-				Alert.alert("Erro", "Falha ao remover baixa.");
+				showError("Falha ao remover baixa.");
 			}
 		},
-		[database, loadData, section]
+		[database, loadData, section, notifyDataChanged, showSuccess, showError]
 	);
 
 	const deleteItemsBulk = useCallback(
@@ -265,11 +287,13 @@ export function useLaunchesData({ database, section, family, userData, filters =
 				setPage(1);
 				setHasMore(true);
 				await loadData(section, { silent: true, page: 1 });
+				notifyDataChanged?.();
+				showSuccess("Excluído!");
 			} catch {
-				Alert.alert("Erro", "Falha ao excluir itens.");
+				showError("Falha ao excluir itens.");
 			}
 		},
-		[database, loadData, section]
+		[database, loadData, section, notifyDataChanged, showSuccess, showError]
 	);
 
 	const deleteRecorrenciaScope = useCallback(
@@ -283,11 +307,12 @@ export function useLaunchesData({ database, section, family, userData, filters =
 				setPage(1);
 				setHasMore(true);
 				await loadData(section, { silent: true, page: 1 });
+				notifyDataChanged?.();
 			} catch {
 				Alert.alert("Erro", "Falha ao excluir recorrência.");
 			}
 		},
-		[database, loadData, section]
+		[database, loadData, section, notifyDataChanged]
 	);
 
 	const validItems = useMemo(() => {

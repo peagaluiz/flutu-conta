@@ -1,4 +1,5 @@
 import LaunchesEditorModal from "./LaunchesEditorModal";
+import LaunchesEditorAppModal from "./LaunchesEditorAppModal";
 import BancoCatalogoSheet from "./BancoCatalogoSheet";
 import { BaixaDateModal } from "./BaixaDateModal";
 import { DateFilterModal } from "@/components/finance/DateFilterModal";
@@ -10,6 +11,7 @@ export default function LaunchesModals({
 	family,
 	userData,
 	colors,
+	desktop = false,
 	searchText,
 	onApplySearch,
 	showFilterSearch = true,
@@ -21,9 +23,11 @@ export default function LaunchesModals({
 	ofxModalOpen,
 	onCloseOfx,
 }) {
+	const EditorModal = desktop ? LaunchesEditorAppModal : LaunchesEditorModal;
+
 	return (
 		<>
-			<LaunchesEditorModal
+			<EditorModal
 				isOpen={editor.editorOpen}
 				onClose={editor.closeEditor}
 				editorMode={editor.editorMode}

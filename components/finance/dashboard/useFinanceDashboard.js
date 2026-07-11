@@ -4,6 +4,7 @@ import { useAuth } from "@/state/AuthContext";
 import { useFinanceDate } from "@/state/FinanceDateContext";
 import { useFinanceVisibilityScope } from "@/state/FinanceVisibilityScopeContext";
 import { useSyncProgress } from "@/state/SyncProgressContext";
+import { useInsertSavedTick } from "@/state/InsertModalContext";
 import {
 	applyVisibilityScopeFilter,
 	buildBanksBreakdown,
@@ -15,10 +16,11 @@ import { toISODateString } from "@/utils/finance/helpers";
 
 export function useFinanceDashboard() {
 	const database = useDatabase();
-	const { userData, family } = useAuth();
+	const { userData, family, familyReady } = useAuth();
 	const { dateRange, dateField } = useFinanceDate();
 	const { startSync, endSync, updateStep } = useSyncProgress();
 	const { visibilityScope } = useFinanceVisibilityScope();
+	const savedTick = useInsertSavedTick();
 
 	const [loading, setLoading] = useState(true);
 	const [refreshing, setRefreshing] = useState(false);
@@ -71,7 +73,7 @@ export function useFinanceDashboard() {
 		[filteredItems, banks]
 	);
 
-	const getPendentesRows = useCallback(() => {
+	const pendingRows = useMemo(() => {
 		const dateToStr = dateRange.end ? String(dateRange.end).slice(0, 10) : null;
 		const pendentes = normalizeTransactions(allScopedItems, {
 			familyId: activeFamilyId,
@@ -88,9 +90,11 @@ export function useFinanceDashboard() {
 			...filteredItems.filter((item) => item.is_ghost && item.status !== "pago"),
 		];
 	}, [activeFamilyId, allScopedItems, dateRange.end, filteredItems]);
+	const getPendentesRows = useCallback(() => pendingRows, [pendingRows]);
 
 	const loadData = useCallback(
 		async (silent = false) => {
+			if (!familyReady || !userData?.id) return;
 			try {
 				if (!silent) setLoading(true);
 				const effectiveScope = canUseFamilyScope ? visibilityScope : "mine";
@@ -136,6 +140,7 @@ export function useFinanceDashboard() {
 			dateField,
 			dateRange.end,
 			dateRange.start,
+			familyReady,
 			userData?.id,
 			visibilityScope,
 		]
@@ -144,6 +149,12 @@ export function useFinanceDashboard() {
 	useEffect(() => {
 		loadData(false);
 	}, [loadData]);
+
+	// Recarrega após operações em Lançamentos/inserir (excluir, baixa, salvar…).
+	useEffect(() => {
+		if (savedTick) loadData(true);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [savedTick]);
 
 	const createAjuste = useCallback(
 		async ({ motivo, valor, tipo }) => {

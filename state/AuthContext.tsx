@@ -23,13 +23,13 @@ import {
     FamilyMember,
     FamilySnapshot,
     getFamilySnapshot,
-    getPendingInviteForCurrentUser,
     inviteFamilyMember,
     leaveFamily,
     PendingInvite,
     removeFamilyMember,
     transferOwnership,
 } from "@/services/supabase/familyRepository";
+import { clearReadCache } from "@/services/database/readCache";
 
 type FamilyInfo = {
     id: number;
@@ -75,6 +75,7 @@ type AuthState = {
     familyMembers: FamilyMember[];
     familyInvites: FamilyInvite[];
     pendingInvite: PendingInvite | null;
+    familyReady: boolean;
     reloadFamily: () => Promise<void>;
     createNewFamily: (nome: string) => Promise<void>;
     sendFamilyInvite: (email: string) => Promise<void>;
@@ -116,71 +117,76 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [familyInvites, setFamilyInvites] = useState<FamilyInvite[]>([]);
     const [familySnapshot, setFamilySnapshot] = useState<FamilySnapshot | null>(null);
     const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null);
+    const [familyReady, setFamilyReady] = useState(false);
     const router = useRouter();
 
     async function reloadFamily() {
-        if (!isLoggedIn) {
-            setFamily(null);
-            setFamilyMembers([]);
-            setFamilyInvites([]);
-            setFamilySnapshot(null);
+        setFamilyReady(false);
+        try {
+            if (!isLoggedIn) {
+                setFamily(null);
+                setFamilyMembers([]);
+                setFamilyInvites([]);
+                setFamilySnapshot(null);
+                setPendingInvite(null);
+                setUser((prev) =>
+                    prev
+                        ? {
+                            ...prev,
+                            familyId: null,
+                            familyRole: null,
+                            familyName: null,
+                        }
+                        : prev
+                );
+                return;
+            }
+
+            const snapshot = await getFamilySnapshot(user?.id);
+            setFamilySnapshot(snapshot);
+            setFamilyMembers(snapshot.members);
+            setFamilyInvites(snapshot.invites);
+
+            if (!snapshot.family || !snapshot.membership) {
+                setFamily(null);
+                setUser((prev) =>
+                    prev
+                        ? {
+                            ...prev,
+                            familyId: null,
+                            familyRole: null,
+                            familyName: null,
+                        }
+                        : prev
+                );
+                setPendingInvite(snapshot.pendingInvite);
+                return;
+            }
+
             setPendingInvite(null);
+
+            const nextFamily: FamilyInfo = {
+                id: snapshot.family.id,
+                nome: snapshot.family.nome,
+                ownerUserId: snapshot.family.owner_user_id,
+                memberCount: snapshot.members.length,
+                role: snapshot.membership.role as "owner" | "member",
+            };
+
+            setFamily(nextFamily);
             setUser((prev) =>
                 prev
                     ? {
                         ...prev,
-                        familyId: null,
-                        familyRole: null,
-                        familyName: null,
+                        familyId: nextFamily.id,
+                        familyRole: nextFamily.role,
+                        familyName: nextFamily.nome,
                     }
                     : prev
             );
-            return;
+        } finally {
+            setFamilyReady(true);
         }
-
-        const snapshot = await getFamilySnapshot();
-        setFamilySnapshot(snapshot);
-        setFamilyMembers(snapshot.members);
-        setFamilyInvites(snapshot.invites);
-
-        if (!snapshot.family || !snapshot.membership) {
-            setFamily(null);
-            setUser((prev) =>
-                prev
-                    ? {
-                        ...prev,
-                        familyId: null,
-                        familyRole: null,
-                        familyName: null,
-                    }
-                    : prev
-            );
-            const invite = await getPendingInviteForCurrentUser().catch(() => null);
-            setPendingInvite(invite);
-            return;
-        }
-
-        setPendingInvite(null);
-
-        const nextFamily: FamilyInfo = {
-            id: snapshot.family.id,
-            nome: snapshot.family.nome,
-            ownerUserId: snapshot.family.owner_user_id,
-            memberCount: snapshot.members.length,
-            role: snapshot.membership.role as "owner" | "member",
-        };
-
-        setFamily(nextFamily);
-        setUser((prev) =>
-            prev
-                ? {
-                    ...prev,
-                    familyId: nextFamily.id,
-                    familyRole: nextFamily.role,
-                    familyName: nextFamily.nome,
-                }
-                : prev
-        );
     }
 
     async function authenticateAndSetSession(data: LoginPayload) {
@@ -227,12 +233,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     async function logOut() {
         await supabase.auth.signOut();
+        clearReadCache();
         setUser(null);
         setFamily(null);
         setFamilyMembers([]);
         setFamilyInvites([]);
         setFamilySnapshot(null);
         setPendingInvite(null);
+        setFamilyReady(false);
         setIsLoggedIn(false);
         router.replace("/login");
     }
@@ -381,6 +389,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             if (currentUser) {
                 setUser(currentUser);
                 setIsLoggedIn(true);
+            } else {
+                setFamilyReady(true);
             }
 
             setIsReady(true);
@@ -399,6 +409,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 };
             });
             setIsLoggedIn(Boolean(nextUser));
+            if (!nextUser) setFamilyReady(true);
             setIsReady(true);
         });
 
@@ -438,6 +449,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 familyMembers,
                 familyInvites,
                 pendingInvite,
+                familyReady,
                 reloadFamily,
                 createNewFamily,
                 sendFamilyInvite,

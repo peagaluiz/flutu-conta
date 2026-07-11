@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useId, useRef, useState } from "react";
 import Svg, { Path, Defs, LinearGradient, Stop, Circle, Line } from "react-native-svg";
 import { Box } from "@/components/ui/box";
 import { Text } from "@/components/ui/text";
@@ -23,6 +23,10 @@ export function DesktopBalanceChart({ points, loading = false }) {
 	const colors = getThemeColors(theme);
 	const [width, setWidth] = useState(0);
 	const [hoverIndex, setHoverIndex] = useState(null);
+	// Id único por instância: o gráfico é montado em telas diferentes (home e
+	// dashboard) e um id fixo de gradiente colide entre elas, fazendo o preenchimento
+	// só resolver após um reload limpo do navegador.
+	const gradientId = `balanceFill-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
 	const plotRef = useRef(null);
 	const observerRef = useRef(null);
 
@@ -132,12 +136,12 @@ export function DesktopBalanceChart({ points, loading = false }) {
 						)}
 						<Svg width={chartWidth} height={CHART_HEIGHT} style={{ overflow: "visible" }}>
 							<Defs>
-								<LinearGradient id="balanceFill" x1="0" y1="0" x2="0" y2="1">
+								<LinearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
 									<Stop offset="0" stopColor={colors.brand} stopOpacity="0.22" />
 									<Stop offset="1" stopColor={colors.brand} stopOpacity="0.02" />
 								</LinearGradient>
 							</Defs>
-							<Path d={saldoArea} fill="url(#balanceFill)" />
+							<Path d={saldoArea} fill={`url(#${gradientId})`} />
 							{series.map((s) => (
 								<Path key={s.key} d={buildLine(s.key)} stroke={s.color} strokeWidth={2.5} fill="none" />
 							))}

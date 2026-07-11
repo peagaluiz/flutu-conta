@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Alert } from "@/utils/alert";
 import { useOpenInsert } from "@/hooks/useOpenInsert";
+import { useInsertModal } from "@/state/InsertModalContext";
+import { useSaveFeedback } from "@/state/SaveFeedbackContext";
 import { getItemType } from "@/utils/auth/launches/sections";
 
 export function useLaunchesEditor({
@@ -11,6 +13,8 @@ export function useLaunchesEditor({
 	loadData,
 }) {
 	const openInsert = useOpenInsert();
+	const notifyDataChanged = useInsertModal()?.notifyDataChanged;
+	const { showSuccess, showError } = useSaveFeedback();
 
 	const [editorOpen, setEditorOpen] = useState(false);
 	const [editorMode, setEditorMode] = useState("create");
@@ -56,11 +60,12 @@ export function useLaunchesEditor({
 					isFamilyShared: false,
 				});
 				await loadData("bancos");
+				notifyDataChanged?.();
 			} catch {
 				Alert.alert("Erro", "Não foi possível adicionar o banco.");
 			}
 		},
-		[database, family?.id, loadData, userData?.id]
+		[database, family?.id, loadData, userData?.id, notifyDataChanged]
 	);
 
 	const loadPessoaOptions = useCallback(async () => {
@@ -200,7 +205,9 @@ export function useLaunchesEditor({
 					return;
 				}
 				await loadData("bancos");
+				notifyDataChanged?.();
 				closeEditor();
+				showSuccess("Salvo!");
 				return;
 			}
 
@@ -240,7 +247,9 @@ export function useLaunchesEditor({
 					);
 				}
 				await loadData("pessoas");
+				notifyDataChanged?.();
 				closeEditor();
+				showSuccess("Salvo!");
 				return;
 			}
 
@@ -258,10 +267,12 @@ export function useLaunchesEditor({
 					});
 				}
 				await loadData("imobilizados");
+				notifyDataChanged?.();
 				closeEditor();
+				showSuccess("Salvo!");
 			}
 		} catch {
-			Alert.alert("Erro", "Falha ao salvar.");
+			showError("Falha ao salvar.");
 		} finally {
 			setSavingEditor(false);
 		}
@@ -278,6 +289,9 @@ export function useLaunchesEditor({
 		editingItem,
 		family?.id,
 		loadData,
+		notifyDataChanged,
+		showSuccess,
+		showError,
 		section,
 		selectedPessoaId,
 		shareWithFamily,

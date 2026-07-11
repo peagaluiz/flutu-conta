@@ -2,10 +2,8 @@ import { useMemo } from "react";
 import { Platform, ScrollView } from "react-native";
 
 import { VStack } from "@/components/ui/vstack";
-import { HStack } from "@/components/ui/hstack";
 import { Box } from "@/components/ui/box";
-import { Button, ButtonIcon, ButtonText } from "@/components/ui/button";
-import { Save } from "lucide-react-native";
+import { AppModalFooter } from "@/components/ui/app-modal";
 
 import {
 	decimalMask,
@@ -152,31 +150,13 @@ export function InsertFormView({
 								isDarkMode={isDarkMode}
 								themeColors={themeColors}
 							/>
-							<HStack space="md" className="w-full justify-end">
-								<Button
-									action="secondary"
-									size="lg"
-									variant="outline"
-									onPress={handleBack}
-								>
-									<ButtonText>Cancelar</ButtonText>
-								</Button>
-								<Button
-									action="positive"
-									size="lg"
-									onPress={handleSubmit(handleSave)}
-									isDisabled={isSaving || isLoading}
-								>
-									<ButtonIcon as={Save} />
-									<ButtonText>
-										{isLoading
-											? "Carregando..."
-											: isSaving
-											? "Salvando..."
-											: "Salvar"}
-									</ButtonText>
-								</Button>
-							</HStack>
+							<AppModalFooter
+								onSave={handleSubmit(handleSave)}
+								onCancel={handleBack}
+								saving={isSaving || isLoading}
+								savingLabel={isLoading ? "Carregando..." : "Salvando..."}
+								className="w-full justify-end"
+							/>
 						</VStack>
 					</Box>
 				</Box>

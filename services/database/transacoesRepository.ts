@@ -457,10 +457,11 @@ export function createTransacoesRepository() {
 				dateFrom?: string;
 				dateTo?: string;
 				dateField?: "data_vencimento" | "data_baixa";
-				fallbackRemoteOnMiss?: boolean;
-				visibilityScope?: VisibilityScope;
-				userId?: string | null;
-				familyId?: number | null;
+					fallbackRemoteOnMiss?: boolean;
+					visibilityScope?: VisibilityScope;
+					userId?: string | null;
+					familyId?: number | null;
+					withCount?: boolean;
 			}
 		) => {
 			const visibility = await resolveVisibilityContext(params);
@@ -485,7 +486,10 @@ export function createTransacoesRepository() {
 				// ignora deletados e ordena não-baixados primeiro, depois por vencimento.
 				let query = supabase
 					.from("transacoes")
-					.select("*, pessoa_rel:pessoa(nome), categoria_rel:categoria_catalogo(nome)")
+					.select(
+						"*, pessoa_rel:pessoa(nome), categoria_rel:categoria_catalogo(nome)",
+						params?.withCount ? { count: "exact" } : undefined
+					)
 					.eq("deleted", 0)
 					.order("data_baixa", { ascending: true, nullsFirst: true })
 					.order("data_vencimento", { ascending: true, nullsFirst: false })
@@ -516,7 +520,7 @@ export function createTransacoesRepository() {
 					query = query.range(from, to);
 				}
 
-				const { data, error } = await query;
+				const { data, error, count } = await query;
 				if (error) throw error.message;
 				if (id) {
 					if (!data?.[0]) return null;
@@ -536,7 +540,11 @@ export function createTransacoesRepository() {
 					recurrence_sequence: null,
 				}));
 
-				if (!wantGhosts) return normalized;
+				if (!wantGhosts) {
+					return params?.withCount
+						? { rows: normalized, totalCount: count ?? normalized.length }
+						: normalized;
+				}
 
 				const offset = hasPaging ? ((params?.page ?? 1) - 1) * (params?.limit ?? 0) : 0;
 				const limit = params?.limit ?? 0;
@@ -691,6 +699,35 @@ export function createTransacoesRepository() {
 				userId?: string | null;
 				familyId?: number | null;
 			}) => (Platform.OS === "web" ? listRecorrenciasWeb(params) : listRecorrencias(params)),
+			projectGhostOccurrences: async (params?: {
+				dateFrom?: string | null;
+				dateTo?: string | null;
+				dateField?: "data_vencimento" | "data_baixa";
+				visibilityScope?: VisibilityScope;
+				userId?: string | null;
+				familyId?: number | null;
+			}) => {
+				if (!params?.dateTo || params.dateField === "data_baixa") return [];
+				const visibility = await resolveVisibilityContext(params);
+				if (Platform.OS === "web") {
+					return projectGhostOccurrencesWeb({
+						dateFrom: params.dateFrom ?? null,
+						dateTo: params.dateTo,
+						visibility,
+					});
+				}
+				await validateAndGeneratePendingRecurrences({
+					referenceDate: params.dateTo,
+					visibilityScope: visibility.scope,
+					userId: visibility.userId,
+					familyId: visibility.familyId,
+				});
+				return projectGhostOccurrences({
+					dateFrom: params.dateFrom ?? null,
+					dateTo: params.dateTo,
+					visibility,
+				});
+			},
 			pauseRecorrencia,
 			activateRecorrencia,
 			deleteRecorrencia,

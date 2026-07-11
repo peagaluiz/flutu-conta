@@ -1,9 +1,10 @@
 import { View } from "react-native";
-import { X } from "lucide-react-native";
+import { Save, X } from "lucide-react-native";
 import { Modal, ModalBackdrop, ModalContent } from "@/components/ui/modal";
 import { Pressable } from "@/components/ui/pressable";
 import { Text } from "@/components/ui/text";
 import { HStack } from "@/components/ui/hstack";
+import { Button, ButtonIcon, ButtonText } from "@/components/ui/button";
 import { useTheme } from "@/components/ui/gluestack-ui-provider/ThemeProvider/ThemeProvider";
 import { getThemeColors } from "@/constants/colors";
 
@@ -63,6 +64,44 @@ export function AppModalHeader({ title, onClose, disabled = false, colors }) {
 			>
 				<X size={20} color={colors.textSecondary} />
 			</Pressable>
+		</HStack>
+	);
+}
+
+// Footer padrão dos modais AppModal: quando recebe `onSave`, mostra Cancelar +
+// Salvar (mesmo padrão do inserir/editar transação); sem `onSave`, mostra só
+// "Fechar" (igual ao modal de família).
+export function AppModalFooter({
+	onSave,
+	onCancel,
+	onClose,
+	saving = false,
+	disabled = false,
+	saveLabel = "Salvar",
+	savingLabel = "Salvando...",
+	cancelLabel = "Cancelar",
+	closeLabel = "Fechar",
+	className = "w-full justify-end px-4 pb-4",
+}) {
+	if (typeof onSave !== "function") {
+		return (
+			<HStack className={className}>
+				<Button action="secondary" size="lg" variant="outline" onPress={onClose ?? onCancel}>
+					<ButtonText>{closeLabel}</ButtonText>
+				</Button>
+			</HStack>
+		);
+	}
+
+	return (
+		<HStack space="md" className={className}>
+			<Button action="secondary" size="lg" variant="outline" onPress={onCancel} isDisabled={saving}>
+				<ButtonText>{cancelLabel}</ButtonText>
+			</Button>
+			<Button action="positive" size="lg" onPress={onSave} isDisabled={saving || disabled}>
+				<ButtonIcon as={Save} />
+				<ButtonText>{saving ? savingLabel : saveLabel}</ButtonText>
+			</Button>
 		</HStack>
 	);
 }

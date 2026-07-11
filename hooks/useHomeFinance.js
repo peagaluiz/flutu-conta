@@ -17,12 +17,19 @@ import {
 import { buildDashboardResumo } from "@/utils/finance/dashboardHelpers";
 import { toISODateString } from "@/utils/finance/helpers";
 import { groupCardTransactions } from "@/utils/finance/groupCardTransactions";
+import { filterTransactionsByPeriod } from "@/utils/finance/transactionSelectors";
+import { compareTransacaoRows } from "@/services/database/recurrenceProjection";
+import {
+	invalidateFinanceTransactions,
+	loadTransactionHistory,
+} from "@/services/database/financeReadService";
+import { invalidateRecurrenceReadModel } from "@/services/database/recurrenceWeb";
 
 export function useHomeFinance() {
 	const openInsertFlow = useOpenInsert();
 	const savedTick = useInsertSavedTick();
 	const database = useDatabase();
-	const { userData, family } = useAuth();
+	const { userData, family, familyReady } = useAuth();
 	const { startSync, endSync, updateStep, isSyncing } = useSyncProgress();
 	const wasSyncingRef = useRef(false);
 
@@ -64,29 +71,58 @@ export function useHomeFinance() {
 		[activeFamilyId, effectiveScope, userData?.id]
 	);
 
-	useEffect(() => {
-		let active = true;
-		setLoading(true);
-		Promise.all([
+	const fetchSnapshot = useCallback(async () => {
+		const bankParams = {
+			visibilityScope: effectiveScope,
+			userId: userData?.id ?? null,
+			familyId: activeFamilyId,
+		};
+
+		if (Platform.OS === "web") {
+			const [allResult, ghosts, bancoData, faturaData] = await Promise.all([
+				loadTransactionHistory(database, { ...allQueryParams, withCount: true }),
+				database.projectGhostOccurrences(queryParams),
+				database.listBancos(bankParams),
+				database.listFaturas(bankParams),
+			]);
+			const allData = Array.isArray(allResult?.rows) ? allResult.rows : [];
+			const hasCompleteHistory = Number(allResult?.totalCount ?? -1) === allData.length;
+			const periodData = hasCompleteHistory
+				? [
+						...filterTransactionsByPeriod(allData, queryParams),
+						...(Array.isArray(ghosts) ? ghosts : []),
+					].sort(compareTransacaoRows)
+				: await database.getTransacao(undefined, queryParams);
+			return { periodData, allData, bancoData, faturaData };
+		}
+
+		const [periodData, allData, bancoData, faturaData] = await Promise.all([
 			database.getTransacao(undefined, queryParams),
 			database.getTransacao(undefined, allQueryParams),
-			database.listBancos({
-				visibilityScope: effectiveScope,
-				userId: userData?.id ?? null,
-				familyId: activeFamilyId,
-			}),
-			database.listFaturas({
-				visibilityScope: effectiveScope,
-				userId: userData?.id ?? null,
-				familyId: activeFamilyId,
-			}),
-		])
-			.then(([data, allData, bancoData, faturaData]) => {
+			database.listBancos(bankParams),
+			database.listFaturas(bankParams),
+		]);
+		return { periodData, allData, bancoData, faturaData };
+	}, [activeFamilyId, allQueryParams, database, effectiveScope, queryParams, userData?.id]);
+
+	const applySnapshot = useCallback(({ periodData, allData, bancoData, faturaData }) => {
+		setLancamentos(Array.isArray(periodData) ? periodData : []);
+		setAllLancamentos(Array.isArray(allData) ? allData : []);
+		setBanks(Array.isArray(bancoData) ? bancoData : []);
+		setFaturas(Array.isArray(faturaData) ? faturaData : []);
+	}, []);
+
+	useEffect(() => {
+		if (!familyReady || !userData?.id) {
+			setLoading(true);
+			return;
+		}
+		let active = true;
+		setLoading(true);
+		fetchSnapshot()
+			.then((snapshot) => {
 				if (!active) return;
-				setLancamentos(Array.isArray(data) ? data : []);
-				setAllLancamentos(Array.isArray(allData) ? allData : []);
-				setBanks(Array.isArray(bancoData) ? bancoData : []);
-				setFaturas(Array.isArray(faturaData) ? faturaData : []);
+				applySnapshot(snapshot);
 			})
 			.catch(() => {
 				if (active) setLancamentos([]);
@@ -97,44 +133,34 @@ export function useHomeFinance() {
 		return () => {
 			active = false;
 		};
-	}, [activeFamilyId, allQueryParams, database, effectiveScope, queryParams, userData?.id]);
+	}, [applySnapshot, familyReady, fetchSnapshot, userData?.id]);
 
 	const reload = useCallback(async () => {
+		if (!familyReady || !userData?.id) return;
 		try {
-			const [data, allData, bancoData, faturaData] = await Promise.all([
-				database.getTransacao(undefined, queryParams),
-				database.getTransacao(undefined, allQueryParams),
-				database.listBancos({
-					visibilityScope: effectiveScope,
-					userId: userData?.id ?? null,
-					familyId: activeFamilyId,
-				}),
-				database.listFaturas({
-					visibilityScope: effectiveScope,
-					userId: userData?.id ?? null,
-					familyId: activeFamilyId,
-				}),
-			]);
-			setLancamentos(Array.isArray(data) ? data : []);
-			setAllLancamentos(Array.isArray(allData) ? allData : []);
-			setBanks(Array.isArray(bancoData) ? bancoData : []);
-			setFaturas(Array.isArray(faturaData) ? faturaData : []);
+			applySnapshot(await fetchSnapshot());
 		} catch {
 		}
-	}, [activeFamilyId, allQueryParams, database, effectiveScope, queryParams, userData?.id]);
+	}, [applySnapshot, familyReady, fetchSnapshot, userData?.id]);
 
 	useEffect(() => {
-		if (isSyncing) {
+		if (isSyncing && !refreshing) {
 			wasSyncingRef.current = true;
 		} else if (wasSyncingRef.current) {
 			wasSyncingRef.current = false;
+			invalidateFinanceTransactions();
+			invalidateRecurrenceReadModel();
 			reload();
 		}
-	}, [isSyncing, reload]);
+	}, [isSyncing, refreshing, reload]);
 
 	// Recarrega após um salvamento no modal de inserir/editar (desktop web).
 	useEffect(() => {
-		if (savedTick) reload();
+		if (savedTick) {
+			invalidateFinanceTransactions();
+			invalidateRecurrenceReadModel();
+			reload();
+		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [savedTick]);
 
@@ -143,30 +169,15 @@ export function useHomeFinance() {
 		startSync("Sincronizando dados...");
 		try {
 			await database.syncAllPendingData({ force: true, onProgress: updateStep });
-			const [data, allData, bancoData, faturaData] = await Promise.all([
-				database.getTransacao(undefined, queryParams),
-				database.getTransacao(undefined, allQueryParams),
-				database.listBancos({
-					visibilityScope: effectiveScope,
-					userId: userData?.id ?? null,
-					familyId: activeFamilyId,
-				}),
-				database.listFaturas({
-					visibilityScope: effectiveScope,
-					userId: userData?.id ?? null,
-					familyId: activeFamilyId,
-				}),
-			]);
-			setLancamentos(Array.isArray(data) ? data : []);
-			setAllLancamentos(Array.isArray(allData) ? allData : []);
-			setBanks(Array.isArray(bancoData) ? bancoData : []);
-			setFaturas(Array.isArray(faturaData) ? faturaData : []);
+			invalidateFinanceTransactions();
+			invalidateRecurrenceReadModel();
+			await reload();
 		} catch {
 		} finally {
 			setRefreshing(false);
 			endSync();
 		}
-	}, [activeFamilyId, allQueryParams, database, effectiveScope, endSync, queryParams, startSync, updateStep, userData?.id]);
+	}, [database, endSync, reload, startSync, updateStep]);
 
 	const handleDeleteItem = useCallback(
 		async (item) => {
@@ -179,6 +190,7 @@ export function useHomeFinance() {
 			} else {
 				await database.deleteTransacao(item.id_transacao);
 			}
+			invalidateFinanceTransactions();
 			await reload();
 		},
 		[database, reload]
@@ -196,6 +208,7 @@ export function useHomeFinance() {
 			} else {
 				await database.darBaixa(item.id_transacao, dataBaixa);
 			}
+			invalidateFinanceTransactions();
 			await reload();
 		},
 		[database, reload]
@@ -204,6 +217,7 @@ export function useHomeFinance() {
 	const handleRemoverBaixa = useCallback(
 		async (item) => {
 			await database.removerBaixa(item.id_transacao);
+			invalidateFinanceTransactions();
 			await reload();
 		},
 		[database, reload]
@@ -271,17 +285,22 @@ export function useHomeFinance() {
 
 	const banksResumo = useMemo(() => {
 		if (!banks.length) return [];
+		const totalsByBank = new Map();
+		for (const item of lancamentos) {
+			const bankId = Number(item.id_banco);
+			if (!Number.isFinite(bankId) || bankId <= 0) continue;
+			const totals = totalsByBank.get(bankId) ?? { saldo: 0, divida: 0 };
+			if (item.tipo === "receber" && item.status === "pago") {
+				totals.saldo += Number(item.valor || 0);
+			}
+			if (item.tipo === "pagar" && item.status === "pendente") {
+				totals.divida += Number(item.valor || 0);
+			}
+			totalsByBank.set(bankId, totals);
+		}
 		return banks.map((bank) => {
-			const bt = lancamentos.filter(
-				(t) => Number(t.id_banco) === Number(bank.id_banco)
-			);
-			const saldo = bt
-				.filter((t) => t.tipo === "receber" && t.status === "pago")
-				.reduce((s, t) => s + Number(t.valor || 0), 0);
-			const divida = bt
-				.filter((t) => t.tipo === "pagar" && t.status === "pendente")
-				.reduce((s, t) => s + Number(t.valor || 0), 0);
-			return { ...bank, saldo, divida };
+			const totals = totalsByBank.get(Number(bank.id_banco));
+			return { ...bank, saldo: totals?.saldo ?? 0, divida: totals?.divida ?? 0 };
 		});
 	}, [banks, lancamentos]);
 

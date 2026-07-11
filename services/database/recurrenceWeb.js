@@ -1,10 +1,13 @@
 import { supabase } from "@/services/supabase/client";
 import { expandGhostsFromRules } from "@/services/database/recurrenceProjection";
+import {
+	buildReadKey,
+	invalidateReadCache,
+	readThrough,
+} from "@/services/database/readCache";
+import { loadRemoteCategoryCatalog } from "@/services/database/categoryCatalogRead";
 
-// Leitura de recorrências no web (Supabase). O nativo usa SQLite; aqui reaproveitamos
-// o mesmo algoritmo puro de projeção (expandGhostsFromRules), só trocando a fonte de dados.
-// No Supabase as datas são TIMESTAMPTZ e template_json é JSONB (objeto), então normalizamos
-// datas para YYYY-MM-DD e aceitamos o template já como objeto.
+let canUseReadModelView = true;
 
 function applyVisibility(query, visibility) {
 	if (!visibility?.userId) return query;
@@ -35,123 +38,115 @@ function parseTemplate(template) {
 }
 
 async function fetchCategoryMap() {
-	const { data } = await supabase.from("categoria_catalogo").select("id,nome");
-	const map = new Map();
-	(data ?? []).forEach((cat) => map.set(Number(cat.id), cat.nome));
-	return map;
+	const data = await loadRemoteCategoryCatalog();
+	return new Map(data.map((cat) => [Number(cat.id), cat.nome]));
 }
 
-// Conjunto de datas já materializadas por recorrência (Map<uuid, Set<YYYY-MM-DD>>) numa
-// única query, chaveado pelo uuid via mapa id_recurrencia(remoto) → uuid.
-async function fetchExistingDueDates(recurrences) {
-	const idToUuid = new Map();
-	const map = new Map();
-	recurrences.forEach((rec) => {
-		idToUuid.set(Number(rec.id_recurrencia), rec.uuid);
-		map.set(rec.uuid, new Set());
-	});
-	const ids = [...idToUuid.keys()];
-	if (!ids.length) return map;
+function normalizeReadModelRow(row, categoryMap = null) {
+	const template = parseTemplate(row.template_json);
+	const categoryId = template.id_categoria ?? null;
+	const links = Array.isArray(row.recurrence_links) ? row.recurrence_links : [];
+	const dueDates = Array.isArray(row.due_dates)
+		? row.due_dates
+		: links.map((link) => link.due_date);
 
-	const { data, error } = await supabase
-		.from("recorrencia_transacoes")
-		.select("id_recurrencia,due_date")
-		.in("id_recurrencia", ids);
-	if (error) throw error.message ?? error;
-
-	(data ?? []).forEach((row) => {
-		const uuid = idToUuid.get(Number(row.id_recurrencia));
-		if (uuid) map.get(uuid).add(dateOnly(row.due_date));
-	});
-	return map;
+	return {
+		...row,
+		base_due_date: dateOnly(row.base_due_date),
+		next_due_date: dateOnly(row.next_due_date),
+		end_date: dateOnly(row.end_date),
+		categoria:
+			row.categoria ??
+			(categoryId != null ? categoryMap?.get(Number(categoryId)) ?? null : null),
+		template,
+		due_dates: dueDates.map(dateOnly).filter(Boolean),
+		active_transactions_count: Number(
+			row.active_transactions_count ?? links.length ?? 0
+		),
+	};
 }
 
-async function fetchActiveRecurrences(visibility, categoryMap) {
+async function fetchFromView(visibility) {
 	let query = supabase
-		.from("recorrencias")
+		.from("finance_recurrence_read_model")
 		.select("*")
 		.eq("deleted", 0)
-		.eq("status", "ativa");
+		.order("id_recurrencia", { ascending: false });
 	query = applyVisibility(query, visibility);
-
 	const { data, error } = await query;
-	if (error) throw error.message ?? error;
+	if (error) throw error;
+	return (data ?? []).map((row) => normalizeReadModelRow(row));
+}
 
-	return (data ?? []).map((row) => {
-		const template = parseTemplate(row.template_json);
-		const idCategoria = template.id_categoria ?? null;
-		return {
-			id_recurrencia: row.id_recurrencia,
-			uuid: row.uuid,
-			frequency: row.frequency,
-			base_due_date: dateOnly(row.base_due_date),
-			next_due_date: dateOnly(row.next_due_date),
-			end_date: dateOnly(row.end_date),
-			skip_non_working: row.skip_non_working,
-			skip_direction: row.skip_direction,
-			categoria: idCategoria != null ? categoryMap.get(Number(idCategoria)) ?? null : null,
-			family_id: row.family_id ?? null,
-			user_id: row.user_id ?? null,
-			is_family_shared: row.is_family_shared ?? 0,
-			template,
-		};
+async function fetchFallback(visibility) {
+	const [categoryMap, recurrenceResult] = await Promise.all([
+		fetchCategoryMap(),
+		(async () => {
+			let query = supabase
+				.from("recorrencias")
+				.select("*, recurrence_links:recorrencia_transacoes(due_date,id_transacao)")
+				.eq("deleted", 0)
+				.order("id_recurrencia", { ascending: false });
+			query = applyVisibility(query, visibility);
+			return query;
+		})(),
+	]);
+	if (recurrenceResult.error) throw recurrenceResult.error.message ?? recurrenceResult.error;
+	return (recurrenceResult.data ?? []).map((row) => normalizeReadModelRow(row, categoryMap));
+}
+
+export function invalidateRecurrenceReadModel() {
+	invalidateReadCache("recurrence-read-model");
+}
+
+export async function getRecurrenceReadModel(params = {}) {
+	const visibility = {
+		scope: params.visibilityScope ?? "all",
+		userId: params.userId ?? null,
+		familyId: params.familyId ?? null,
+	};
+	const key = buildReadKey("recurrence-read-model", visibility);
+
+	return readThrough(key, async () => {
+		if (canUseReadModelView) {
+			try {
+				return await fetchFromView(visibility);
+			} catch (error) {
+				const code = error?.code;
+				if (code !== "42P01" && code !== "PGRST205") throw error;
+				canUseReadModelView = false;
+			}
+		}
+		return fetchFallback(visibility);
 	});
 }
 
 export async function projectGhostOccurrencesWeb({ dateFrom, dateTo, visibility }) {
 	if (!dateTo) return [];
-	const categoryMap = await fetchCategoryMap();
-	const recurrences = await fetchActiveRecurrences(visibility, categoryMap);
-	if (!recurrences.length) return [];
-	const existingDatesByRecurrence = await fetchExistingDueDates(recurrences);
-	return expandGhostsFromRules({ dateFrom, dateTo, recurrences, existingDatesByRecurrence });
+	const rows = await getRecurrenceReadModel({
+		visibilityScope: visibility?.scope,
+		userId: visibility?.userId,
+		familyId: visibility?.familyId,
+	});
+	const active = rows.filter((row) => row.status === "ativa");
+	const existingDatesByRecurrence = new Map(
+		active.map((row) => [row.uuid, new Set(row.due_dates)])
+	);
+	return expandGhostsFromRules({
+		dateFrom,
+		dateTo,
+		recurrences: active,
+		existingDatesByRecurrence,
+	});
 }
 
-// Listagem para a tabela "Recorrentes" (view-only). Mesmo shape consumido pelo card mobile:
-// valor/pessoa/observacao/categoria extraídos do template, active_transactions_count agregado.
 export async function listRecorrenciasWeb(params) {
-	const visibility = {
-		scope: params?.visibilityScope ?? "all",
-		userId: params?.userId ?? null,
-		familyId: params?.familyId ?? null,
-	};
-	const categoryMap = await fetchCategoryMap();
-
-	let query = supabase.from("recorrencias").select("*").eq("deleted", 0);
-	query = applyVisibility(query, visibility);
-	query = query.order("id_recurrencia", { ascending: false });
-
-	const { data, error } = await query;
-	if (error) throw error.message ?? error;
-	const rules = data ?? [];
-
-	const ids = rules.map((row) => Number(row.id_recurrencia));
-	const countByRecurrence = new Map();
-	if (ids.length) {
-		const { data: links } = await supabase
-			.from("recorrencia_transacoes")
-			.select("id_recurrencia")
-			.in("id_recurrencia", ids);
-		(links ?? []).forEach((link) => {
-			const key = Number(link.id_recurrencia);
-			countByRecurrence.set(key, (countByRecurrence.get(key) || 0) + 1);
-		});
-	}
-
-	return rules.map((row) => {
-		const template = parseTemplate(row.template_json);
-		const idCategoria = template.id_categoria ?? null;
-		return {
-			...row,
-			base_due_date: dateOnly(row.base_due_date),
-			next_due_date: dateOnly(row.next_due_date),
-			end_date: dateOnly(row.end_date),
-			valor: Number(template.valor || 0),
-			pessoa: template.pessoa ?? null,
-			observacao: template.observacao ?? null,
-			json: template.json ?? null,
-			categoria: idCategoria != null ? categoryMap.get(Number(idCategoria)) ?? null : null,
-			active_transactions_count: countByRecurrence.get(Number(row.id_recurrencia)) || 0,
-		};
-	});
+	const rows = await getRecurrenceReadModel(params);
+	return rows.map((row) => ({
+		...row,
+		valor: Number(row.template.valor || 0),
+		pessoa: row.template.pessoa ?? null,
+		observacao: row.template.observacao ?? null,
+		json: row.template.json ?? null,
+	}));
 }

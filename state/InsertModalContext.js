@@ -21,14 +21,19 @@ export function InsertModalProvider({ children }) {
 
 	const closeInsertModal = useCallback(() => setVisible(false), []);
 
+	// Sinaliza "os dados mudaram" pras telas de baixo recarregarem, sem mexer na
+	// visibilidade do modal — usado pelas operações de Lançamentos (excluir,
+	// baixa, editar pessoa/imobilizado) e pelo salvar na rota de tela cheia.
+	const notifyDataChanged = useCallback(() => setSavedTick((tick) => tick + 1), []);
+
 	const markSaved = useCallback(() => {
-		setSavedTick((tick) => tick + 1);
+		notifyDataChanged();
 		setVisible(false);
-	}, []);
+	}, [notifyDataChanged]);
 
 	return (
 		<InsertModalContext.Provider
-			value={{ visible, params, openId, savedTick, openInsertModal, closeInsertModal, markSaved }}
+			value={{ visible, params, openId, savedTick, openInsertModal, closeInsertModal, markSaved, notifyDataChanged }}
 		>
 			{children}
 		</InsertModalContext.Provider>

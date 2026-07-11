@@ -35,7 +35,7 @@ export default function LaunchesMobileScreen() {
 	const { theme } = useTheme();
 	const colors = getThemeColors(theme);
 	const database = useDatabase();
-	const { family, userData } = useAuth();
+	const { family, userData, familyReady } = useAuth();
 	const isDesktopWeb = useIsDesktopWeb();
 
 	const [section, setSection] = useState("transacoes");
@@ -77,7 +77,7 @@ export default function LaunchesMobileScreen() {
 		removerBaixaBulk,
 		deleteItemsBulk,
 		deleteRecorrenciaScope,
-	} = useLaunchesData({ database, section, family, userData, filters: activeFilters });
+	} = useLaunchesData({ database, section, family, userData, filters: activeFilters, ready: familyReady });
 
 	// Recarrega ao voltar de fluxos que alteram dados (ex.: importação OFX navega com highlightTs)
 	useEffect(() => {

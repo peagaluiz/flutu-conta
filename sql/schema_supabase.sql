@@ -309,6 +309,46 @@ END $$;
 -- verificar qualquer política.
 -- =============================================================================
 
+CREATE OR REPLACE FUNCTION public.get_family_snapshot()
+RETURNS JSONB
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = public
+AS $$
+WITH current_membership AS (
+    SELECT fm.* FROM public.familia_membros fm
+    WHERE fm.user_id = auth.uid() AND fm.status = 'active'
+    ORDER BY fm.created_at ASC LIMIT 1
+), current_family AS (
+    SELECT f.* FROM public.familias f
+    JOIN current_membership cm ON cm.family_id = f.id
+), pending AS (
+    SELECT fi.id, fi.family_id, f.nome AS family_nome,
+           COALESCE(p.nome, p.email) AS invited_by_nome, fi.created_at
+    FROM public.familia_convites fi
+    JOIN public.familias f ON f.id = fi.family_id
+    LEFT JOIN public.profiles p ON p.id = fi.invited_by_user_id
+    WHERE lower(fi.email) = lower(COALESCE(auth.jwt() ->> 'email', ''))
+      AND fi.status = 'pending'
+    ORDER BY fi.created_at DESC LIMIT 1
+)
+SELECT jsonb_build_object(
+    'family', (SELECT to_jsonb(cf) FROM current_family cf),
+    'membership', (SELECT to_jsonb(cm) FROM current_membership cm),
+    'members', COALESCE((SELECT jsonb_agg(to_jsonb(fm) || jsonb_build_object('user_nome', p.nome, 'user_email', p.email) ORDER BY fm.created_at)
+        FROM public.familia_membros fm JOIN current_membership cm ON cm.family_id = fm.family_id
+        LEFT JOIN public.profiles p ON p.id = fm.user_id WHERE fm.status = 'active'), '[]'::jsonb),
+    'invites', COALESCE((SELECT jsonb_agg(to_jsonb(fi) ORDER BY fi.created_at DESC)
+        FROM public.familia_convites fi JOIN current_membership cm ON cm.family_id = fi.family_id
+        WHERE fi.status = 'pending'), '[]'::jsonb),
+    'pending_invite', (SELECT to_jsonb(pending) FROM pending)
+);
+$$;
+
+REVOKE ALL ON FUNCTION public.get_family_snapshot() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_family_snapshot() TO authenticated;
+
 GRANT USAGE ON SCHEMA public TO authenticated, anon;
 
 GRANT SELECT ON TABLE public.banco_catalogo      TO authenticated, anon;
@@ -518,6 +558,40 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_cartao_faturas_banco_mes ON public.cartao_f
 CREATE INDEX IF NOT EXISTS idx_cartao_faturas_user    ON public.cartao_faturas(user_id);
 CREATE INDEX IF NOT EXISTS idx_cartao_faturas_family  ON public.cartao_faturas(family_id, is_family_shared);
 CREATE INDEX IF NOT EXISTS idx_transacoes_id_fatura   ON public.transacoes(id_fatura);
+CREATE INDEX IF NOT EXISTS idx_transacoes_user_due_active
+    ON public.transacoes(user_id, data_vencimento, id_transacao DESC) WHERE deleted = 0;
+CREATE INDEX IF NOT EXISTS idx_transacoes_family_due_active
+    ON public.transacoes(family_id, data_vencimento, id_transacao DESC) WHERE deleted = 0;
+CREATE INDEX IF NOT EXISTS idx_transacoes_user_settled_active
+    ON public.transacoes(user_id, data_baixa, id_transacao DESC) WHERE deleted = 0;
+CREATE INDEX IF NOT EXISTS idx_transacoes_family_settled_active
+    ON public.transacoes(family_id, data_baixa, id_transacao DESC) WHERE deleted = 0;
+CREATE INDEX IF NOT EXISTS idx_recorrencias_user_projection
+    ON public.recorrencias(user_id, status, next_due_date) WHERE deleted = 0;
+CREATE INDEX IF NOT EXISTS idx_recorrencias_family_projection
+    ON public.recorrencias(family_id, status, next_due_date) WHERE deleted = 0;
+
+-- Read model compartilhado pela projeção de previstas e pela tabela de recorrências.
+CREATE OR REPLACE VIEW public.finance_recurrence_read_model
+WITH (security_invoker = true)
+AS
+SELECT
+    r.*,
+    cc.nome AS categoria,
+    COALESCE(
+        jsonb_agg(rt.due_date ORDER BY rt.due_date)
+            FILTER (WHERE rt.id_recurrencia_transacao IS NOT NULL),
+        '[]'::jsonb
+    ) AS due_dates,
+    COUNT(rt.id_recurrencia_transacao) AS active_transactions_count
+FROM public.recorrencias r
+LEFT JOIN public.categoria_catalogo cc
+    ON cc.id = NULLIF(r.template_json ->> 'id_categoria', '')::BIGINT
+LEFT JOIN public.recorrencia_transacoes rt
+    ON rt.id_recurrencia = r.id_recurrencia
+GROUP BY r.id_recurrencia, cc.nome;
+
+GRANT SELECT ON public.finance_recurrence_read_model TO authenticated;
 
 -- =============================================================================
 -- ROW LEVEL SECURITY

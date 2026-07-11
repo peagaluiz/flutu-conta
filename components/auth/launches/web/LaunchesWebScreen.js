@@ -13,6 +13,7 @@ import { Box } from "@/components/ui/box";
 
 import { getDescricao } from "@/utils/finance/getDescricao";
 import { getSectionConfig } from "@/utils/auth/launches/sections";
+import { invalidateRecurrenceReadModel } from "@/services/database/recurrenceWeb";
 
 import { useLaunchesData } from "@/components/auth/launches/useLaunchesData";
 import { useLaunchesEditor } from "@/components/auth/launches/useLaunchesEditor";
@@ -215,7 +216,7 @@ export default function LaunchesWebScreen() {
     const { theme } = useTheme();
     const colors = getThemeColors(theme);
     const database = useDatabase();
-    const { family, userData } = useAuth();
+	const { family, userData, familyReady } = useAuth();
 
     const [section, setSection] = useState("transacoes");
     const [quickFilter, setQuickFilter] = useState("todos");
@@ -255,7 +256,7 @@ export default function LaunchesWebScreen() {
         darBaixaBulk,
         removerBaixaBulk,
         deleteItemsBulk,
-    } = useLaunchesData({ database, section, family, userData, filters: activeFilters });
+	} = useLaunchesData({ database, section, family, userData, filters: activeFilters, ready: familyReady });
 
     // Recarrega ao voltar de fluxos que alteram dados (ex.: importação OFX navega com highlightTs)
     useEffect(() => {
@@ -263,10 +264,14 @@ export default function LaunchesWebScreen() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [highlightTs]);
 
-    // Recarrega após um salvamento no modal de inserir/editar (desktop web).
+    // Recarrega após um salvamento/baixa/edição (modal ou operações da tabela).
+    // Silencioso: atualiza os itens sem skeleton, mantendo a ordenação atual.
     const savedTick = useInsertSavedTick();
     useEffect(() => {
-        if (savedTick) loadData(section);
+        if (savedTick) {
+            invalidateRecurrenceReadModel();
+            loadData(section, { silent: true, page: 1 });
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [savedTick]);
 
@@ -328,6 +333,7 @@ export default function LaunchesWebScreen() {
 
     const [refreshTick, setRefreshTick] = useState(0);
     const handleRefresh = useCallback(() => {
+        invalidateRecurrenceReadModel();
         setRefreshTick((tick) => tick + 1);
         onRefresh();
     }, [onRefresh]);
@@ -336,11 +342,17 @@ export default function LaunchesWebScreen() {
     const [recorrencias, setRecorrencias] = useState([]);
     const [recorrenciasLoading, setRecorrenciasLoading] = useState(false);
     const recorrenciasColumns = useMemo(() => getRecorrenciasWebColumns(colors), [colors]);
+    // Só mostra skeleton ao (re)entrar na aba; refreshes por savedTick/refreshTick
+    // atualizam a lista silenciosamente.
+    const recSkeletonSectionRef = useRef(null);
 
     useEffect(() => {
-        if (section !== "transacoes") return;
+		if (section !== "transacoes" || !familyReady || !userData?.id) return;
         let active = true;
-        setRecorrenciasLoading(true);
+        if (recSkeletonSectionRef.current !== section) {
+            recSkeletonSectionRef.current = section;
+            setRecorrenciasLoading(true);
+        }
         database
             .listRecorrencias({
                 userId: userData?.id ?? null,
@@ -359,7 +371,7 @@ export default function LaunchesWebScreen() {
         return () => {
             active = false;
         };
-    }, [section, database, userData?.id, family?.id, savedTick, refreshTick]);
+	}, [section, database, userData?.id, family?.id, familyReady, savedTick, refreshTick]);
 
     return (
         <View style={{ flex: 1, backgroundColor: colors.screen }}>
@@ -493,6 +505,7 @@ export default function LaunchesWebScreen() {
                 family={family}
                 userData={userData}
                 colors={colors}
+                desktop
                 searchText={searchText}
                 onApplySearch={setSearchText}
                 showFilterSearch={false}

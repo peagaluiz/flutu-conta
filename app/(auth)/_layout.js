@@ -1,6 +1,6 @@
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import { useTheme } from "@/components/ui/gluestack-ui-provider/ThemeProvider/ThemeProvider";
 import { useAuth } from "@/state/AuthContext";
 import { Redirect, Stack } from "expo-router";
@@ -51,10 +51,12 @@ function StackLayoutInner() {
 	useEffect(() => {
 		if (!isReady || !isLoggedIn || didAutoSyncRef.current) return;
 		didAutoSyncRef.current = true;
-		startSync("Sincronizando dados...");
-		database.syncAllPendingData({ force: true, onProgress: updateStep })
-			.catch(() => {})
-			.finally(() => endSync());
+		if (Platform.OS !== "web") {
+			startSync("Sincronizando dados...");
+			database.syncAllPendingData({ force: true, onProgress: updateStep })
+				.catch(() => {})
+				.finally(() => endSync());
+		}
 		database.fetchAndCacheCatalog().catch(() => {});
 		database.fetchAndCacheCategories().catch(() => {});
 	}, [database, endSync, isLoggedIn, isReady, startSync, updateStep]);

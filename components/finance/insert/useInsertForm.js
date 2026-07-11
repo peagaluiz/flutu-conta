@@ -6,6 +6,7 @@ import { yupResolver } from "@hookform/resolvers/yup";
 import { useDatabase } from "@/hooks/useDatabase";
 import { useErrorToast } from "@/components/ui/toast/useErrorToast";
 import { useSaveFeedback } from "@/state/SaveFeedbackContext";
+import { useInsertModal } from "@/state/InsertModalContext";
 import { useAuth } from "@/state/AuthContext";
 import {
 	insertSchema,
@@ -26,6 +27,7 @@ export function useInsertForm(options = {}) {
 	const params = paramsOverride ?? routeParams;
 	const { showNewToast } = useErrorToast();
 	const { startSaving, showSuccess, showError } = useSaveFeedback();
+	const notifyDataChanged = useInsertModal()?.notifyDataChanged;
 	const { userData, family } = useAuth();
 	const {
 		createTransacao,
@@ -79,6 +81,9 @@ export function useInsertForm(options = {}) {
 				onDone(savedId ? { savedId: String(savedId) } : {});
 				return;
 			}
+			// Rota de tela cheia (mobile): avisa Home/Finanças pra recarregarem,
+			// já que aqui não passa pelo markSaved do modal desktop.
+			notifyDataChanged?.();
 			if (fromParam === "launches") {
 				router.replace(
 					savedId
@@ -95,7 +100,7 @@ export function useInsertForm(options = {}) {
 				router.replace("/");
 			}
 		},
-		[onDone, fromParam, router]
+		[onDone, fromParam, router, notifyDataChanged]
 	);
 
 	const cancel = useCallback(() => {

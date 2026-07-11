@@ -15,10 +15,15 @@ import {
 	currentYear,
 	shiftRangeBack,
 } from "@/utils/finance/financeDesktopHelpers";
+import {
+	invalidateFinanceTransactions,
+	loadTransactionHistory,
+} from "@/services/database/financeReadService";
+import { invalidateRecurrenceReadModel } from "@/services/database/recurrenceWeb";
 
 export function useFinanceDesktop() {
 	const database = useDatabase();
-	const { userData, family } = useAuth();
+	const { userData, family, familyReady } = useAuth();
 	const { isSyncing } = useSyncProgress();
 	const { visibilityScope } = useFinanceVisibilityScope();
 	const { dateRange } = useFinanceDate();
@@ -37,19 +42,21 @@ export function useFinanceDesktop() {
 
 	const load = useCallback(
 		async (silent = false) => {
+			if (!familyReady || !userData?.id) return;
 			if (!silent) setLoading(true);
 			try {
 				const [data, categories] = await Promise.all([
-					database.getTransacao(undefined, {
+					loadTransactionHistory(database, {
 						page: 1,
 						limit: 9999,
+						withCount: true,
 						visibilityScope: effectiveScope,
 						userId: userData?.id ?? null,
 						familyId: activeFamilyId,
 					}),
 					database.listCategories(),
 				]);
-				setAllItems(Array.isArray(data) ? data : []);
+				setAllItems(Array.isArray(data?.rows) ? data.rows : []);
 				setCatalog(Array.isArray(categories) ? categories : []);
 			} catch {
 				setAllItems([]);
@@ -57,7 +64,7 @@ export function useFinanceDesktop() {
 				if (!silent) setLoading(false);
 			}
 		},
-		[activeFamilyId, database, effectiveScope, userData?.id]
+		[activeFamilyId, database, effectiveScope, familyReady, userData?.id]
 	);
 
 	useEffect(() => {
@@ -68,14 +75,15 @@ export function useFinanceDesktop() {
 	// Buscamos só os fantasmas do range atual (as transações reais já vêm em allItems).
 	useEffect(() => {
 		let active = true;
+		if (savedTick) invalidateRecurrenceReadModel();
 		const from = dateRange?.start;
 		const to = dateRange?.end;
-		if (!from || !to) {
+		if (!familyReady || !userData?.id || !from || !to) {
 			setPeriodGhosts([]);
 			return;
 		}
 		database
-			.getTransacao(undefined, {
+			.projectGhostOccurrences({
 				dateFrom: from,
 				dateTo: to,
 				dateField: "data_vencimento",
@@ -85,7 +93,7 @@ export function useFinanceDesktop() {
 			})
 			.then((rows) => {
 				if (!active) return;
-				setPeriodGhosts((Array.isArray(rows) ? rows : []).filter((row) => row?.is_ghost));
+				setPeriodGhosts(Array.isArray(rows) ? rows : []);
 			})
 			.catch(() => {
 				if (active) setPeriodGhosts([]);
@@ -93,7 +101,7 @@ export function useFinanceDesktop() {
 		return () => {
 			active = false;
 		};
-	}, [activeFamilyId, database, effectiveScope, userData?.id, dateRange?.start, dateRange?.end, savedTick]);
+	}, [activeFamilyId, database, effectiveScope, familyReady, userData?.id, dateRange?.start, dateRange?.end, savedTick]);
 
 	// Recarrega após sincronização ou após salvar no modal de inserir/editar.
 	useEffect(() => {
@@ -101,12 +109,17 @@ export function useFinanceDesktop() {
 			wasSyncingRef.current = true;
 		} else if (wasSyncingRef.current) {
 			wasSyncingRef.current = false;
+			invalidateFinanceTransactions();
+			invalidateRecurrenceReadModel();
 			load(true);
 		}
 	}, [isSyncing, load]);
 
 	useEffect(() => {
-		if (savedTick) load(true);
+		if (savedTick) {
+			invalidateFinanceTransactions();
+			load(true);
+		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [savedTick]);
 

@@ -119,10 +119,16 @@ function SaveFeedbackOverlay({ state }) {
     return (
         <Animated.View
             pointerEvents={visible ? "auto" : "none"}
-            className="absolute inset-0 items-center justify-center z-[999]"
+            className="absolute inset-0 items-center justify-center"
             style={[
                 backdropStyle,
-                { backgroundColor: isDark ? "rgba(0,0,0,0.55)" : "rgba(15,23,42,0.35)" },
+                {
+                    backgroundColor: isDark ? "rgba(0,0,0,0.55)" : "rgba(15,23,42,0.35)",
+                    // Acima do overlay dos modais do gluestack (zIndex 9999 no web),
+                    // via style inline pra não depender do NativeWind gerar a classe.
+                    zIndex: 10000,
+                    elevation: 10000,
+                },
             ]}
         >
             <Animated.View
