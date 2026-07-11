@@ -1,4 +1,5 @@
 import { ScrollViewStyleReset } from "expo-router/html";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 
 // Roda antes do primeiro paint: aplica o tema salvo (AsyncStorage web = localStorage)
 // ou o do sistema, evitando flash claro/escuro enquanto o bundle carrega.
@@ -30,7 +31,10 @@ export default function Root({ children }) {
 				<script dangerouslySetInnerHTML={{ __html: themeScript }} />
 				<ScrollViewStyleReset />
 			</head>
-			<body>{children}</body>
+			<body>
+				{children}
+				<SpeedInsights />
+			</body>
 		</html>
 	);
 }

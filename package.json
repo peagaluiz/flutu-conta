@@ -34,6 +34,7 @@
     "@react-native-async-storage/async-storage": "2.1.2",
     "@react-navigation/drawer": "^7.3.9",
     "@supabase/supabase-js": "^2.103.0",
+    "@vercel/speed-insights": "^2.0.0",
     "axios": "^1.12.2",
     "babel-plugin-module-resolver": "^5.0.2",
     "dotenv": "^16.4.5",
