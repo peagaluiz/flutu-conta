@@ -20,6 +20,7 @@ import Animated, {
 import Loader from "@/components/ui/loader";
 import { useDatabase } from "@/hooks/useDatabase";
 import { useNavReady } from "@/state/NavigationContext";
+import { useInactivityLock } from "@/hooks/auth/useInactivityLock";
 import { SyncProgressProvider, useSyncProgress } from "@/state/SyncProgressContext";
 import { setupSyncNotificationChannel, requestSyncNotificationPermission } from "@/services/syncNotificationService";
 
@@ -29,6 +30,7 @@ function StackLayoutInner() {
 	const database = useDatabase();
 	const signalNavReady = useNavReady();
 	const { startSync, endSync, updateStep } = useSyncProgress();
+	const { bump } = useInactivityLock();
 	const didAutoSyncRef = useRef(false);
 	const navReadySignaledRef = useRef(false);
 	const isDarkMode = theme === "dark";
@@ -103,7 +105,13 @@ function StackLayoutInner() {
 		<OfxImportProvider>
 		<InsertModalProvider>
 		<FamilyModalProvider>
-		<View style={{ flex: 1 }}>
+		<View
+			style={{ flex: 1 }}
+			onStartShouldSetResponderCapture={() => {
+				bump();
+				return false;
+			}}
+		>
 			<Stack screenOptions={{ headerBackVisible: false, animation: "none" }}>
 				<Stack.Screen name="(stack)" options={{ headerShown: false }} />
 				<Stack.Screen name="(main)" options={{ headerShown: false }} />

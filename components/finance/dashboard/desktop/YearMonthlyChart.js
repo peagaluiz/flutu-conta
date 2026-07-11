@@ -3,6 +3,7 @@ import Svg, { Rect, Path, Line, Circle } from "react-native-svg";
 import { Box } from "@/components/ui/box";
 import { Text } from "@/components/ui/text";
 import { formatCurrency } from "@/utils/finance/helpers";
+import { buildMonotonePath } from "@/utils/finance/monotoneCurve";
 import { shadow } from "@/utils/shadow";
 
 const INCOME_COLOR = "#16A34A";
@@ -68,25 +69,12 @@ export function YearMonthlyChart({ months, monthNameLong, colors }) {
 	const zeroY = yFor(0);
 
 	const nonFuture = months.filter((m) => !m.isFuture);
-	// Spline suave (Catmull-Rom → Bézier) para a linha do saldo sem quinas.
-	const buildSmoothLine = (data) => {
-		const pts = data.map((m) => ({ x: xCenter(m.index), y: yFor(m.saldo) }));
-		if (pts.length < 2) return "";
-		let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
-		for (let i = 0; i < pts.length - 1; i++) {
-			const p0 = pts[i - 1] || pts[i];
-			const p1 = pts[i];
-			const p2 = pts[i + 1];
-			const p3 = pts[i + 2] || p2;
-			const cp1x = p1.x + (p2.x - p0.x) / 6;
-			const cp1y = p1.y + (p2.y - p0.y) / 6;
-			const cp2x = p2.x - (p3.x - p1.x) / 6;
-			const cp2y = p2.y - (p3.y - p1.y) / 6;
-			d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
-		}
-		return d;
-	};
-	const saldoLine = buildSmoothLine(nonFuture);
+	const saldoLine = buildMonotonePath(
+		nonFuture.map((month) => ({
+			x: xCenter(month.index),
+			y: yFor(month.saldo),
+		}))
+	);
 
 	const handleMove = (e) => {
 		if (!plotRef.current?.getBoundingClientRect) return;
