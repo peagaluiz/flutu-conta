@@ -39,6 +39,7 @@ export function TransacaoMainSection({
     formatDateDisplay,
     canShareWithFamily,
     isCartao = false,
+    hideTitle = false,
 }) {
     const inputBorderColor = themeColors?.borderStrong;
     const inputBackgroundColor = themeColors?.surface;
@@ -73,11 +74,13 @@ export function TransacaoMainSection({
                 borderColor: isDarkMode ? "rgba(255,255,255,0.10)" : "#E2E8F0",
             }}
         >
-            <GridItem _extra={{ className: "col-span-12" }}>
-                <Text className="text-lg font-semibold" style={{ color: isDarkMode ? "#F8FAFC" : "#0F172A" }}>
-                    {isEditMode ? "Editar lançamento" : "Novo lançamento"}
-                </Text>
-            </GridItem>
+            {!hideTitle ? (
+                <GridItem _extra={{ className: "col-span-12" }}>
+                    <Text className="text-lg font-semibold" style={{ color: isDarkMode ? "#F8FAFC" : "#0F172A" }}>
+                        {isEditMode ? "Editar lançamento" : "Novo lançamento"}
+                    </Text>
+                </GridItem>
+            ) : null}
 
             <GridItem _extra={{ className: "col-span-12" }}>
                 <Controller

@@ -1,28 +1,32 @@
 import { useEffect } from "react";
+import { useWindowDimensions } from "react-native";
 import {
 	useAnimatedStyle,
 	useSharedValue,
+	useReducedMotion,
+	withDelay,
 	withTiming,
 	Easing,
 } from "react-native-reanimated";
+import { LOGIN_SHEET_DELAY } from "@/components/auth/login/loginEntering";
 
 export function useLoginAnimation() {
-	const translateY = useSharedValue(260);
-	const opacity = useSharedValue(0);
+	const { height } = useWindowDimensions();
+	const reduceMotion = useReducedMotion();
+	const translateY = useSharedValue(reduceMotion ? 0 : height);
 
 	useEffect(() => {
-		translateY.value = withTiming(0, {
-			duration: 560,
-			easing: Easing.out(Easing.cubic),
-		});
-		opacity.value = withTiming(1, {
-			duration: 380,
-			easing: Easing.out(Easing.quad),
-		});
+		if (reduceMotion) return;
+		translateY.value = withDelay(
+			LOGIN_SHEET_DELAY,
+			withTiming(0, {
+				duration: 600,
+				easing: Easing.out(Easing.exp),
+			})
+		);
 	}, []);
 
 	return useAnimatedStyle(() => ({
-		opacity: opacity.value,
 		transform: [{ translateY: translateY.value }],
 	}));
 }

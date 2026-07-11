@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { View, Text as RNText, TouchableOpacity } from "react-native";
 import Animated, {
-    FadeInDown,
     useSharedValue,
     useAnimatedStyle,
     withRepeat,
@@ -11,13 +10,8 @@ import Animated, {
     Easing,
 } from "react-native-reanimated";
 import { Fingerprint } from "lucide-react-native";
-
-function item(i) {
-    return FadeInDown.delay(420 + i * 80)
-        .duration(450)
-        .springify()
-        .damping(18);
-}
+import { shadow } from "@/utils/shadow";
+import { LoginEnterItem } from "@/components/auth/login/loginEntering";
 
 function BiometricRing({ colors }) {
     const s = useSharedValue(0);
@@ -151,8 +145,8 @@ export function LoginSmartCard({
 
     return (
         <View style={{ alignItems: "center", gap: 18, paddingBottom: 6 }}>
-            <Animated.View
-                entering={item(0)}
+            <LoginEnterItem
+                index={0}
                 style={{ alignItems: "center", gap: 16, width: "100%" }}
             >
                 <View
@@ -163,11 +157,7 @@ export function LoginSmartCard({
                         backgroundColor: colors.brand,
                         alignItems: "center",
                         justifyContent: "center",
-                        shadowColor: colors.brand,
-                        shadowOpacity: 0.4,
-                        shadowRadius: 14,
-                        shadowOffset: { width: 0, height: 12 },
-                        elevation: 8,
+                        ...shadow({ color: colors.brand, offsetY: 12, opacity: 0.4, radius: 14, elevation: 8 }),
                     }}
                 >
                     <RNText
@@ -214,20 +204,20 @@ export function LoginSmartCard({
                         Conta salva neste dispositivo
                     </RNText>
                 </View>
-            </Animated.View>
+            </LoginEnterItem>
 
             {isAuthenticating ? (
                 <>
-                    <Animated.View entering={item(1)}>
+                    <LoginEnterItem index={1}>
                         <BiometricRing colors={colors} />
-                    </Animated.View>
+                    </LoginEnterItem>
 
-                    <Animated.View entering={item(2)} style={{ width: "100%" }}>
+                    <LoginEnterItem index={2} style={{ width: "100%" }}>
                         <TypingDots colors={colors} />
-                    </Animated.View>
+                    </LoginEnterItem>
 
-                    <Animated.View
-                        entering={item(3)}
+                    <LoginEnterItem
+                        index={3}
                         style={{ width: "100%", alignItems: "center", gap: 14 }}
                     >
                         <TouchableOpacity
@@ -270,7 +260,7 @@ export function LoginSmartCard({
                                 Entrar com outra conta
                             </RNText>
                         </TouchableOpacity>
-                    </Animated.View>
+                    </LoginEnterItem>
                 </>
             ) : (
                 <View style={{ width: "100%", gap: 12 }}>

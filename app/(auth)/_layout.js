@@ -7,6 +7,10 @@ import { Redirect, Stack } from "expo-router";
 import { FinanceDateProvider } from "@/state/FinanceDateContext";
 import { FinanceVisibilityScopeProvider } from "@/state/FinanceVisibilityScopeContext";
 import { OfxImportProvider } from "@/state/OfxImportContext";
+import { InsertModalProvider } from "@/state/InsertModalContext";
+import { InsertModalHost } from "@/components/finance/insert/InsertModalHost";
+import { FamilyModalProvider } from "@/state/FamilyModalContext";
+import { FamilyModalHost } from "@/components/family/FamilyModalHost";
 import Animated, {
 	useSharedValue,
 	useAnimatedStyle,
@@ -78,7 +82,18 @@ function StackLayoutInner() {
 		}
 	}, [isReady, isLoggedIn]);
 
-	if (!isLoggedIn && isReady) {
+	if (!isReady) {
+		return (
+			<View
+				className="flex-1 justify-center items-center"
+				style={{ backgroundColor: isDarkMode ? "#020617" : "#FFFFFF" }}
+			>
+				<Loader className="mb-[64px]" />
+			</View>
+		);
+	}
+
+	if (!isLoggedIn) {
 		return <Redirect href="/login" />;
 	}
 
@@ -86,16 +101,17 @@ function StackLayoutInner() {
 		<FinanceDateProvider>
 		<FinanceVisibilityScopeProvider>
 		<OfxImportProvider>
+		<InsertModalProvider>
+		<FamilyModalProvider>
 		<View style={{ flex: 1 }}>
 			<Stack screenOptions={{ headerBackVisible: false, animation: "none" }}>
 				<Stack.Screen name="(stack)" options={{ headerShown: false }} />
-				<Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-				<Stack.Screen
-					name="(drawer)"
-					options={{ headerShown: false }}
-				/>
+				<Stack.Screen name="(main)" options={{ headerShown: false }} />
 				<Stack.Screen name="+not-found" />
 			</Stack>
+
+			<InsertModalHost />
+			<FamilyModalHost />
 
 			<StatusBar style={themeInverse} />
 
@@ -111,6 +127,8 @@ function StackLayoutInner() {
 				</Animated.View>
 			)}
 		</View>
+		</FamilyModalProvider>
+		</InsertModalProvider>
 		</OfxImportProvider>
 		</FinanceVisibilityScopeProvider>
 		</FinanceDateProvider>

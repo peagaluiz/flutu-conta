@@ -10,8 +10,8 @@ import "@/global.css";
 import { GluestackUIProvider } from "@/components/ui/gluestack-ui-provider";
 import { AuthProvider } from "@/state/AuthContext";
 import {
-	ThemeProvider,
-	useTheme,
+    ThemeProvider,
+    useTheme,
 } from "@/components/ui/gluestack-ui-provider/ThemeProvider/ThemeProvider";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Stack } from "expo-router";
@@ -26,133 +26,141 @@ import { LoadingOverlayProvider } from "@/state/LoadingOverlayContext";
 import { SaveFeedbackProvider } from "@/state/SaveFeedbackContext";
 
 const StackGroup = () => {
-	return (
-		<Stack>
-			<Stack.Screen
-				name="(auth)"
-				options={{ headerShown: false, animation: "none" }}
-			/>
-			<Stack.Screen
-				name="login"
-				options={{ headerShown: false, animation: "none" }}
-			/>
-			<Stack.Screen
-				name="recuperar-senha"
-				options={{ headerShown: false, animation: "none" }}
-			/>
-			<Stack.Screen
-				name="nova-senha"
-				options={{ headerShown: false, animation: "none" }}
-			/>
-		</Stack>
-	);
+    return (
+        <Stack>
+            <Stack.Screen
+                name="(auth)"
+                options={{ headerShown: false, animation: "none" }}
+            />
+            <Stack.Screen
+                name="login"
+                options={{ headerShown: false, animation: "none" }}
+            />
+            <Stack.Screen
+                name="recuperar-senha"
+                options={{ headerShown: false, animation: "none" }}
+            />
+            <Stack.Screen
+                name="nova-senha"
+                options={{ headerShown: false, animation: "none" }}
+            />
+        </Stack>
+    );
 };
 
 const ThemeBridge = () => {
-	const { theme } = useTheme();
+    const { theme } = useTheme();
 
-	return (
-		<GluestackUIProvider mode={theme}>
-			<StackGroup />
-		</GluestackUIProvider>
-	);
+    return (
+        <GluestackUIProvider mode={theme}>
+            <StackGroup />
+        </GluestackUIProvider>
+    );
 };
 
 export default function RootLayout() {
-	const isNative = Platform.OS !== "web";
-	const [appIsReady, setAppIsReady] = useState(!isNative);
-	const [splashAnimationFinished, setSplashAnimationFinished] = useState(
-		!isNative
-	);
-	const [dbReady, setDbReady] = useState(Platform.OS === "web");
-	const [navReady, setNavReady] = useState(!isNative);
-	const dbInitStartedRef = useRef(false);
-	const navReadyCalledRef = useRef(!isNative);
+    const isNative = Platform.OS !== "web";
+    const [appIsReady, setAppIsReady] = useState(!isNative);
+    const [splashAnimationFinished, setSplashAnimationFinished] = useState(
+        !isNative
+    );
+    const [dbReady, setDbReady] = useState(Platform.OS === "web");
+    const [navReady, setNavReady] = useState(!isNative);
+    const dbInitStartedRef = useRef(false);
+    const navReadyCalledRef = useRef(!isNative);
 
-	const signalNavReady = useCallback(() => {
-		if (!navReadyCalledRef.current) {
-			navReadyCalledRef.current = true;
-			setNavReady(true);
-		}
-	}, []);
+    const [webHydrated, setWebHydrated] = useState(isNative);
 
-	useEffect(() => {
-		if (!isNative) return;
+    useEffect(() => {
+        if (!isNative) setWebHydrated(true);
+    }, [isNative]);
 
-		async function prepare() {
-			try {
-				await new Promise((resolve) => setTimeout(resolve, 1000));
-			} catch (e) {
-				console.warn(e);
-			} finally {
-				setAppIsReady(true);
-			}
-		}
-		prepare();
-	}, [isNative]);
+    const signalNavReady = useCallback(() => {
+        if (!navReadyCalledRef.current) {
+            navReadyCalledRef.current = true;
+            setNavReady(true);
+        }
+    }, []);
 
-	useEffect(() => {
-		if (Platform.OS === "web") {
-			setDbReady(true);
-			return;
-		}
+    useEffect(() => {
+        if (!isNative) return;
 
-		if (!db || dbInitStartedRef.current) return;
-		dbInitStartedRef.current = true;
+        async function prepare() {
+            try {
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+            } catch (e) {
+                console.warn(e);
+            } finally {
+                setAppIsReady(true);
+            }
+        }
+        prepare();
+    }, [isNative]);
 
-		let active = true;
+    useEffect(() => {
+        if (Platform.OS === "web") {
+            setDbReady(true);
+            return;
+        }
 
-		(async () => {
-			try {
-				await initializeSQLite(db);
-			} catch (error) {
-				console.warn("Falha ao inicializar o SQLite local", error);
-			} finally {
-				if (active) setDbReady(true);
-			}
-		})();
+        if (!db || dbInitStartedRef.current) return;
+        dbInitStartedRef.current = true;
 
-		return () => {
-			active = false;
-		};
-	}, []);
+        let active = true;
 
-	const showSplash =
-		isNative &&
-		(!appIsReady || !splashAnimationFinished || !dbReady || !navReady);
+        (async () => {
+            try {
+                await initializeSQLite(db);
+            } catch (error) {
+                console.warn("Falha ao inicializar o SQLite local", error);
+            } finally {
+                if (active) setDbReady(true);
+            }
+        })();
 
-	return (
-		<PaperProvider>
-		<NavigationContext.Provider value={signalNavReady}>
-		<NavReadyStateContext.Provider value={!showSplash}>
-			<SelectorOverlayProvider>
-			<AuthProvider>
-				<ThemeProvider>
-					<View style={{ flex: 1 }}>
-						<LoadingOverlayProvider>
-							<SaveFeedbackProvider>
-								<ThemeBridge />
-							</SaveFeedbackProvider>
-						</LoadingOverlayProvider>
-						{showSplash && (
-							<Animated.View
-								className="absolute inset-0 z-[999]"
-								style={{ backgroundColor: "#FFFFFF" }}
-								exiting={FadeOut.duration(300)}
-							>
-								<AnimatedSplashScreen
-									onAnimationFinish={() =>
-										setSplashAnimationFinished(true)
-									}
-								/>
-							</Animated.View>
-						)}
-					</View>
-				</ThemeProvider>
-			</AuthProvider>
-			</SelectorOverlayProvider>
-		</NavReadyStateContext.Provider>
-		</NavigationContext.Provider>
-		</PaperProvider>
-	);
+        return () => {
+            active = false;
+        };
+    }, []);
+
+    const showSplash =
+        isNative &&
+        (!appIsReady || !splashAnimationFinished || !dbReady || !navReady);
+
+    if (!webHydrated) return null;
+
+    return (
+        <PaperProvider>
+            <NavigationContext.Provider value={signalNavReady}>
+                <NavReadyStateContext.Provider value={!showSplash}>
+                    <SelectorOverlayProvider>
+                        <AuthProvider>
+                            <ThemeProvider>
+                                <View style={{ flex: 1 }}>
+                                    <LoadingOverlayProvider>
+                                        <SaveFeedbackProvider>
+                                            <ThemeBridge />
+                                        </SaveFeedbackProvider>
+                                    </LoadingOverlayProvider>
+                                    {showSplash && (
+                                        <Animated.View
+                                            className="absolute inset-0 z-[999]"
+                                            style={{ backgroundColor: "#FFFFFF" }}
+                                            exiting={FadeOut.duration(300)}
+                                        >
+                                            <AnimatedSplashScreen
+                                                onAnimationFinish={() =>
+                                                    setSplashAnimationFinished(true)
+                                                }
+                                            />
+                                        </Animated.View>
+                                    )}
+                                </View>
+                            </ThemeProvider>
+                        </AuthProvider>
+                    </SelectorOverlayProvider>
+                </NavReadyStateContext.Provider>
+            </NavigationContext.Provider>
+        </PaperProvider>
+    );
 }

@@ -13,15 +13,8 @@ import {
 	formatDate,
 	isRecebimentoVencido,
 } from "@/utils/finance/helpers";
+import { getDescricao } from "@/utils/finance/getDescricao";
 import { PrevistaBadge } from "@/components/finance/PrevistaBadge";
-
-function getDescricao(item) {
-	try {
-		const parsed = JSON.parse(item.json || "{}");
-		if (parsed?.descricao) return parsed.descricao;
-	} catch {}
-	return item.observacao || "";
-}
 
 export function LancamentoListItem({ item, onPress, onLongPress, iconColor }) {
 	const { theme } = useTheme();

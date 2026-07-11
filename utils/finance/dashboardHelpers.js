@@ -126,6 +126,60 @@ export function buildResumoGeral(items = []) {
 	);
 }
 
+// Resumo único usado pela tela de finance e pela home. Recebe os itens do período
+// (já filtrados por data/escopo, podendo conter fantasmas de recorrência) e todos os
+// itens do escopo (sem filtro de data, usados para saldo inicial e pendentes).
+export function buildDashboardResumo(filteredItems = [], allScopedItems = [], dateRange = {}) {
+	const dateFromStr = dateRange?.start ? String(dateRange.start).slice(0, 10) : null;
+	const dateToStr = dateRange?.end ? String(dateRange.end).slice(0, 10) : null;
+
+	const withinPendingWindow = (item) => {
+		if (!dateToStr) return true;
+		const venc = item?.data_vencimento ? String(item.data_vencimento).slice(0, 10) : null;
+		return !(venc && venc > dateToStr);
+	};
+
+	let saldoInicial = 0;
+	let pendentes = 0;
+	let dividasNaoPagas = 0;
+	let receberPendente = 0;
+
+	const accumulatePending = (item) => {
+		if (!withinPendingWindow(item)) return;
+		pendentes += 1;
+		const valor = Number(item?.valor || 0);
+		if (item?.tipo === "receber") receberPendente += valor;
+		else dividasNaoPagas += valor;
+	};
+
+	(Array.isArray(allScopedItems) ? allScopedItems : []).forEach((item) => {
+		if (item?.status !== "pago") {
+			accumulatePending(item);
+		} else if (dateFromStr) {
+			const baixa = item?.data_baixa ? String(item.data_baixa).slice(0, 10) : null;
+			if (baixa && baixa < dateFromStr) {
+				const valor = Number(item?.valor || 0);
+				if (item?.tipo === "receber") saldoInicial += valor;
+				if (item?.tipo === "pagar") saldoInicial -= valor;
+			}
+		}
+	});
+
+	// Fantasmas de recorrência só existem na consulta com filtro de data, então entram
+	// nos pendentes a partir de filteredItems (não estão em allScopedItems).
+	(Array.isArray(filteredItems) ? filteredItems : [])
+		.filter((item) => item?.is_ghost && item?.status !== "pago")
+		.forEach(accumulatePending);
+
+	const base = buildResumoGeral(filteredItems);
+	return {
+		...finalizeResumo(base, saldoInicial),
+		pendentes,
+		dividasNaoPagas,
+		receberPendente,
+	};
+}
+
 export function finalizeResumo(resumo, saldoInicial = 0) {
 	const entradas = resumo.entradas + saldoInicial;
 	const saldo = entradas - resumo.saidas;

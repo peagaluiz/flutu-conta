@@ -2,10 +2,22 @@
 "use client";
 
 import React, { createContext, useState, useEffect, useContext } from "react";
-import { Appearance } from "react-native";
+import { Appearance, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 type Theme = "light" | "dark";
+
+// Na web o AsyncStorage grava direto no localStorage, então dá para ler a
+// preferência de forma síncrona e nascer já com o tema certo (sem flash).
+const getInitialTheme = (): Theme => {
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+        try {
+            const saved = window.localStorage.getItem("theme");
+            if (saved === "light" || saved === "dark") return saved;
+        } catch {}
+    }
+    return Appearance.getColorScheme() === "dark" ? "dark" : "light";
+};
 
 interface ThemeContextType {
     theme: Theme;
@@ -17,18 +29,16 @@ export const ThemeContext = createContext<ThemeContextType | undefined>(
 );
 
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
-    const [theme, setTheme] = useState<Theme>(
-        Appearance.getColorScheme() === "dark" ? "dark" : "light"
-    );
+    const [theme, setTheme] = useState<Theme>(getInitialTheme);
 
     useEffect(() => {
+        if (Platform.OS === "web") return;
         (async () => {
             const savedTheme = (await AsyncStorage.getItem("theme")) as
                 | Theme
-                | "light";
+                | null;
             if (savedTheme) {
                 setTheme(savedTheme);
-                AsyncStorage.setItem("theme", savedTheme);
             }
         })();
     }, []);

@@ -22,6 +22,7 @@ import { SearchableSelect, SearchableSelectSheet } from "@/components/ui/search-
 
 import { formatCurrency, formatDate } from "@/utils/finance/helpers";
 import { cleanPersonName, normalizePersonKey } from "@/utils/ofx/cleanOfxFields";
+import { LAUNCHES_PATH } from "@/utils/navigation";
 
 export default function OfxImport() {
 	const insets = useSafeAreaInsets();
@@ -50,7 +51,7 @@ export default function OfxImport() {
 
 	// Sem sessão (acesso direto / reload) → volta para lançamentos
 	useEffect(() => {
-		if (!session) router.replace("/(auth)/(tabs)/launches");
+		if (!session) router.replace(LAUNCHES_PATH);
 	}, [session, router]);
 
 	useEffect(() => {
@@ -72,7 +73,7 @@ export default function OfxImport() {
 
 	const goBack = () => {
 		clearImport();
-		router.replace("/(auth)/(tabs)/launches");
+		router.replace(LAUNCHES_PATH);
 	};
 
 	const handleImport = async () => {
@@ -142,7 +143,7 @@ export default function OfxImport() {
 
 			showNewToast("success", `${selected.length} lançamento(s) importado(s).`, "OFX");
 			clearImport();
-			router.replace({ pathname: "/(auth)/(tabs)/launches", params: { highlightTs: String(Date.now()) } });
+			router.replace({ pathname: LAUNCHES_PATH, params: { highlightTs: String(Date.now()) } });
 		} catch (error) {
 			showNewToast("error", String(error?.message || error || "Falha ao importar."), "Erro");
 			setImporting(false);

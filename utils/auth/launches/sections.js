@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import { Users, Package, Wallet, Repeat, Landmark } from "lucide-react-native";
 
 export const SECTIONS = {
@@ -38,7 +39,10 @@ export const SECTIONS = {
 	},
 };
 
-export const BLOCKS = Object.values(SECTIONS);
+// Recorrências rodam apenas sobre o banco local; na web a seção fica oculta
+export const BLOCKS = Object.values(SECTIONS).filter(
+	(section) => Platform.OS !== "web" || section.key !== "recorrencias"
+);
 
 export function getSectionConfig(section) {
 	return SECTIONS[section] ?? SECTIONS.transacoes;

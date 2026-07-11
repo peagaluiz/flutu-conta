@@ -3,6 +3,7 @@ import { Modal, TouchableWithoutFeedback, View } from "react-native";
 import { DatePickerModalContent } from "react-native-paper-dates";
 import { useTheme } from "@/components/ui/gluestack-ui-provider/ThemeProvider/ThemeProvider";
 import { getThemeColors } from "@/constants/colors";
+import { shadow } from "@/utils/shadow";
 
 export function DatePickerDialog({ visible, onDismiss, ...contentProps }) {
 	const { theme } = useTheme();
@@ -44,11 +45,7 @@ export function DatePickerDialog({ visible, onDismiss, ...contentProps }) {
 					className="w-[90%] max-w-[400px] h-[600px] rounded-xl overflow-hidden"
 					style={{
 						backgroundColor: colors.surface,
-						elevation: 8,
-						shadowColor: "#000",
-						shadowOffset: { width: 0, height: 4 },
-						shadowOpacity: 0.25,
-						shadowRadius: 10,
+						...shadow({ color: "#000", offsetY: 4, opacity: 0.25, radius: 10, elevation: 8 }),
 					}}
 				>
 					<DatePickerModalContent

@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { Text } from "@/components/ui/text";
+import { shadow } from "@/utils/shadow";
 import Animated, {
     useAnimatedStyle,
     useSharedValue,
@@ -130,11 +131,7 @@ function SaveFeedbackOverlay({ state }) {
                     cardStyle,
                     {
                         backgroundColor: colors.surface,
-                        shadowColor: "#000",
-                        shadowOffset: { width: 0, height: 8 },
-                        shadowOpacity: 0.25,
-                        shadowRadius: 16,
-                        elevation: 8,
+                        ...shadow({ color: "#000", offsetY: 8, opacity: 0.25, radius: 16, elevation: 8 }),
                     },
                 ]}
             >

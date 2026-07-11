@@ -1,5 +1,6 @@
 import React from 'react';
 import { gridStyle, gridItemStyle } from './styles';
+import { flattenWebStyle } from '../utils/flattenWebStyle';
 
 import type { VariantProps } from '@gluestack-ui/nativewind-utils';
 
@@ -20,7 +21,7 @@ type IGridProps = React.ComponentPropsWithoutRef<'div'> &
   };
 
 const Grid = React.forwardRef<HTMLDivElement, IGridProps>(function Grid(
-  { className, _extra, ...props },
+  { className, _extra, style, ...props },
   ref
 ) {
   const gridClass = _extra?.className;
@@ -32,6 +33,7 @@ const Grid = React.forwardRef<HTMLDivElement, IGridProps>(function Grid(
         class: className + ' ' + finalGridClass,
       })}
       {...props}
+      style={flattenWebStyle(style)}
     />
   );
 });
@@ -44,7 +46,7 @@ type IGridItemProps = React.ComponentPropsWithoutRef<'div'> &
     };
   };
 const GridItem = React.forwardRef<HTMLDivElement, IGridItemProps>(
-  function GridItem({ className, _extra, ...props }, ref) {
+  function GridItem({ className, _extra, style, ...props }, ref) {
     const gridItemClass = _extra?.className;
 
     const finalGridItemClass = gridItemClass ?? '';
@@ -55,6 +57,7 @@ const GridItem = React.forwardRef<HTMLDivElement, IGridItemProps>(
           class: className + ' ' + finalGridItemClass,
         })}
         {...props}
+        style={flattenWebStyle(style)}
       />
     );
   }

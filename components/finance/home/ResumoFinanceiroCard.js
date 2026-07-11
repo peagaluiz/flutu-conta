@@ -275,7 +275,7 @@ export function ResumoFinanceiroCard({
                                 className="text-lg font-bold"
                                 style={{ color: colors.textPrimary }}
                             >
-                                {formatCurrency(resumo.saldo)}
+                                {formatCurrency(resumo.saldoReal)}
                             </Text>
                         </Skeleton>
 

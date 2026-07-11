@@ -3,15 +3,10 @@ import { Switch, View, TouchableOpacity, Text as RNText } from "react-native";
 import { MaskedFormInput } from "@/components/ui/input/MaskedFormInput";
 import { VStack } from "@/components/ui/vstack";
 import { Text } from "@/components/ui/text";
-import Animated, { FadeInDown } from "react-native-reanimated";
 import { Mail, Lock, ShieldCheck, ArrowRight } from "lucide-react-native";
-
-function item(i) {
-	return FadeInDown.delay(420 + i * 70)
-		.duration(450)
-		.springify()
-		.damping(18);
-}
+import { useIsDesktopWeb } from "@/hooks/useIsDesktopWeb";
+import { LoginEnterItem } from "@/components/auth/login/loginEntering";
+import { shadow } from "@/utils/shadow";
 
 export function LoginFormCard({
 	colors,
@@ -23,6 +18,8 @@ export function LoginFormCard({
 	onSubmit,
 	onForgotPassword,
 }) {
+	const isDesktopWeb = useIsDesktopWeb();
+	const saveLoginVisible = !isDesktopWeb;
 	const inputStyle = {
 		height: 56,
 		borderRadius: 16,
@@ -33,7 +30,7 @@ export function LoginFormCard({
 
 	return (
 		<VStack style={{ gap: 16 }}>
-			<Animated.View entering={item(0)}>
+			<LoginEnterItem index={0}>
 				<VStack style={{ gap: 4 }}>
 					<RNText
 						style={{
@@ -55,10 +52,10 @@ export function LoginFormCard({
 						Faça login para continuar
 					</RNText>
 				</VStack>
-			</Animated.View>
+			</LoginEnterItem>
 
 			<VStack style={{ gap: 2 }}>
-				<Animated.View entering={item(1)}>
+				<LoginEnterItem index={1}>
 					<Controller
 						control={control}
 						name="email"
@@ -78,9 +75,9 @@ export function LoginFormCard({
 							/>
 						)}
 					/>
-				</Animated.View>
+				</LoginEnterItem>
 
-				<Animated.View entering={item(2)}>
+				<LoginEnterItem index={2}>
 					<Controller
 						control={control}
 						name="senha"
@@ -101,74 +98,76 @@ export function LoginFormCard({
 							/>
 						)}
 					/>
-				</Animated.View>
+				</LoginEnterItem>
 			</VStack>
 
-			{/* Card salvar login */}
-			<Animated.View entering={item(3)}>
-				<View
-					style={{
-						flexDirection: "row",
-						alignItems: "center",
-						gap: 14,
-						padding: 14,
-						paddingHorizontal: 16,
-						borderRadius: 16,
-						backgroundColor: colors.surfaceMuted,
-					}}
-				>
-					{/* Chip ícone */}
+			{/* Card salvar login — oculto no PC (biometria/SecureStore só no celular) */}
+			{saveLoginVisible && (
+				<LoginEnterItem index={3}>
 					<View
 						style={{
-							width: 38,
-							height: 38,
-							borderRadius: 11,
-							backgroundColor: colors.brandSoft,
+							flexDirection: "row",
 							alignItems: "center",
-							justifyContent: "center",
-							flexShrink: 0,
+							gap: 14,
+							padding: 14,
+							paddingHorizontal: 16,
+							borderRadius: 16,
+							backgroundColor: colors.surfaceMuted,
 						}}
 					>
-						<ShieldCheck size={20} color={colors.brand} strokeWidth={1.9} />
-					</View>
-
-					<View style={{ flex: 1 }}>
-						<RNText
+						{/* Chip ícone */}
+						<View
 							style={{
-								fontSize: 14,
-								fontWeight: "700",
-								color: colors.textPrimary,
+								width: 38,
+								height: 38,
+								borderRadius: 11,
+								backgroundColor: colors.brandSoft,
+								alignItems: "center",
+								justifyContent: "center",
+								flexShrink: 0,
 							}}
 						>
-							Salvar informações de login
-						</RNText>
-						<RNText
-							style={{
-								fontSize: 12.5,
-								fontWeight: "500",
-								color: colors.textSecondary,
-								lineHeight: 17,
-								marginTop: 2,
-							}}
-						>
-							Entre com biometria ou senha do celular.
-						</RNText>
-					</View>
+							<ShieldCheck size={20} color={colors.brand} strokeWidth={1.9} />
+						</View>
 
-					<Switch
-						value={rememberLogin}
-						onValueChange={onRememberLoginChange}
-						trackColor={{
-							false: colors.borderStrong,
-							true: colors.success,
-						}}
-						thumbColor="#FFFFFF"
-					/>
-				</View>
-			</Animated.View>
+						<View style={{ flex: 1 }}>
+							<RNText
+								style={{
+									fontSize: 14,
+									fontWeight: "700",
+									color: colors.textPrimary,
+								}}
+							>
+								Salvar informações de login
+							</RNText>
+							<RNText
+								style={{
+									fontSize: 12.5,
+									fontWeight: "500",
+									color: colors.textSecondary,
+									lineHeight: 17,
+									marginTop: 2,
+								}}
+							>
+								Entre com biometria ou senha do celular.
+							</RNText>
+						</View>
+
+						<Switch
+							value={rememberLogin}
+							onValueChange={onRememberLoginChange}
+							trackColor={{
+								false: colors.borderStrong,
+								true: colors.success,
+							}}
+							thumbColor="#FFFFFF"
+						/>
+					</View>
+				</LoginEnterItem>
+			)}
 
 			{/* Botão Entrar */}
-			<Animated.View entering={item(4)}>
+			<LoginEnterItem index={saveLoginVisible ? 4 : 3}>
 				<TouchableOpacity
 					activeOpacity={0.985}
 					onPress={onSubmit}
@@ -183,13 +182,7 @@ export function LoginFormCard({
 						alignItems: "center",
 						justifyContent: "center",
 						gap: 10,
-						// iOS
-						shadowColor: colors.brand,
-						shadowOpacity: 0.35,
-						shadowRadius: 12,
-						shadowOffset: { width: 0, height: 8 },
-						// Android
-						elevation: 6,
+						...shadow({ color: colors.brand, offsetY: 8, opacity: 0.35, radius: 12, elevation: 6 }),
 					}}
 				>
 					<RNText
@@ -206,10 +199,10 @@ export function LoginFormCard({
 						<ArrowRight size={19} color="#F8FAFC" strokeWidth={2.2} />
 					)}
 				</TouchableOpacity>
-			</Animated.View>
+			</LoginEnterItem>
 
 			{/* Esqueci minha senha */}
-			<Animated.View entering={item(5)} style={{ alignItems: "center" }}>
+			<LoginEnterItem index={saveLoginVisible ? 5 : 4} style={{ alignItems: "center" }}>
 				<TouchableOpacity
 					activeOpacity={0.7}
 					onPress={onForgotPassword}
@@ -225,7 +218,7 @@ export function LoginFormCard({
 						Esqueci minha senha
 					</RNText>
 				</TouchableOpacity>
-			</Animated.View>
+			</LoginEnterItem>
 		</VStack>
 	);
 }

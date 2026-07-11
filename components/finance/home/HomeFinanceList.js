@@ -11,6 +11,7 @@ import { HomeTransactionsSection } from "@/components/finance/home/HomeTransacti
 import { HomeVisibilitySelector } from "@/components/finance/home/HomeVisibilitySelector";
 import { DateFilterModal } from "@/components/finance/DateFilterModal";
 import { useHomeFinance } from "@/hooks/useHomeFinance";
+import { LAUNCHES_PATH } from "@/utils/navigation";
 
 export default function HomeFinanceList() {
 	const insets = useSafeAreaInsets();
@@ -81,9 +82,7 @@ export default function HomeFinanceList() {
 						onDeleteItem={handleDeleteItem}
 						onDarBaixa={handleDarBaixa}
 						onRemoverBaixa={handleRemoverBaixa}
-						onPressSeeAll={() =>
-							router.push("/(auth)/(tabs)/launches")
-						}
+						onPressSeeAll={() => router.push(LAUNCHES_PATH)}
 					/>
 				</Box>
 			</ScrollView>

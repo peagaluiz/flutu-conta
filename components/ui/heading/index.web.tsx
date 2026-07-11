@@ -1,5 +1,6 @@
 import React, { forwardRef, memo } from 'react';
 import { headingStyle } from './styles';
+import { flattenWebStyle } from '../utils/flattenWebStyle';
 import type { VariantProps } from '@gluestack-ui/nativewind-utils';
 type IHeadingProps = VariantProps<typeof headingStyle> &
   React.ComponentPropsWithoutRef<'h1'> & {
@@ -158,9 +159,10 @@ const MappedHeading = memo(
 
 const Heading = memo(
   forwardRef<HTMLHeadingElement, IHeadingProps>(function Heading(
-    { className, size = 'lg', as: AsComp, ...props },
+    { className, size = 'lg', as: AsComp, style, ...restProps },
     ref
   ) {
+    const props = { ...restProps, style: flattenWebStyle(style) };
     const {
       isTruncated,
       bold,

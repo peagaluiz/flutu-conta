@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "expo-router";
+import { Platform } from "react-native";
 import { useDatabase } from "@/hooks/useDatabase";
+import { useOpenInsert } from "@/hooks/useOpenInsert";
+import { useInsertSavedTick } from "@/state/InsertModalContext";
 import { useAuth } from "@/state/AuthContext";
 import { useSyncProgress } from "@/state/SyncProgressContext";
 import { useFinanceDate } from "@/state/FinanceDateContext";
@@ -9,15 +11,16 @@ import {
 	buildDefaultHomeDateRange,
 	buildInsertParams,
 	buildQuickActions,
-	calculateResumo,
 	formatHomeDateRangeLabel,
 	getLatestLancamento,
 } from "@/utils/finance/homeScreenHelpers";
+import { buildDashboardResumo } from "@/utils/finance/dashboardHelpers";
 import { toISODateString } from "@/utils/finance/helpers";
 import { groupCardTransactions } from "@/utils/finance/groupCardTransactions";
 
 export function useHomeFinance() {
-	const router = useRouter();
+	const openInsertFlow = useOpenInsert();
+	const savedTick = useInsertSavedTick();
 	const database = useDatabase();
 	const { userData, family } = useAuth();
 	const { startSync, endSync, updateStep, isSyncing } = useSyncProgress();
@@ -96,6 +99,30 @@ export function useHomeFinance() {
 		};
 	}, [activeFamilyId, allQueryParams, database, effectiveScope, queryParams, userData?.id]);
 
+	const reload = useCallback(async () => {
+		try {
+			const [data, allData, bancoData, faturaData] = await Promise.all([
+				database.getTransacao(undefined, queryParams),
+				database.getTransacao(undefined, allQueryParams),
+				database.listBancos({
+					visibilityScope: effectiveScope,
+					userId: userData?.id ?? null,
+					familyId: activeFamilyId,
+				}),
+				database.listFaturas({
+					visibilityScope: effectiveScope,
+					userId: userData?.id ?? null,
+					familyId: activeFamilyId,
+				}),
+			]);
+			setLancamentos(Array.isArray(data) ? data : []);
+			setAllLancamentos(Array.isArray(allData) ? allData : []);
+			setBanks(Array.isArray(bancoData) ? bancoData : []);
+			setFaturas(Array.isArray(faturaData) ? faturaData : []);
+		} catch {
+		}
+	}, [activeFamilyId, allQueryParams, database, effectiveScope, queryParams, userData?.id]);
+
 	useEffect(() => {
 		if (isSyncing) {
 			wasSyncingRef.current = true;
@@ -104,6 +131,12 @@ export function useHomeFinance() {
 			reload();
 		}
 	}, [isSyncing, reload]);
+
+	// Recarrega após um salvamento no modal de inserir/editar (desktop web).
+	useEffect(() => {
+		if (savedTick) reload();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [savedTick]);
 
 	const onRefresh = useCallback(async () => {
 		setRefreshing(true);
@@ -134,30 +167,6 @@ export function useHomeFinance() {
 			endSync();
 		}
 	}, [activeFamilyId, allQueryParams, database, effectiveScope, endSync, queryParams, startSync, updateStep, userData?.id]);
-
-	const reload = useCallback(async () => {
-		try {
-			const [data, allData, bancoData, faturaData] = await Promise.all([
-				database.getTransacao(undefined, queryParams),
-				database.getTransacao(undefined, allQueryParams),
-				database.listBancos({
-					visibilityScope: effectiveScope,
-					userId: userData?.id ?? null,
-					familyId: activeFamilyId,
-				}),
-				database.listFaturas({
-					visibilityScope: effectiveScope,
-					userId: userData?.id ?? null,
-					familyId: activeFamilyId,
-				}),
-			]);
-			setLancamentos(Array.isArray(data) ? data : []);
-			setAllLancamentos(Array.isArray(allData) ? allData : []);
-			setBanks(Array.isArray(bancoData) ? bancoData : []);
-			setFaturas(Array.isArray(faturaData) ? faturaData : []);
-		} catch {
-		}
-	}, [activeFamilyId, allQueryParams, database, effectiveScope, queryParams, userData?.id]);
 
 	const handleDeleteItem = useCallback(
 		async (item) => {
@@ -204,33 +213,29 @@ export function useHomeFinance() {
 
 	const openInsert = useCallback(
 		(params = {}) => {
-			router.push({
-				pathname: "/(auth)/(stack)/insert",
-				params: buildInsertParams(todayISO, params),
-			});
+			openInsertFlow(buildInsertParams(todayISO, params));
 		},
-		[router, todayISO]
+		[openInsertFlow, todayISO]
 	);
 
 	const handlePressItem = useCallback(
 		(item) => {
 			if (item?.is_ghost) {
-				router.replace({
-					pathname: "/(auth)/(stack)/insert",
-					params: {
+				// Previstas são display-only no web (materializar só no app).
+				if (Platform.OS === "web") return;
+				openInsertFlow(
+					{
 						ghost_recurrence_uuid: String(item.recurrence_uuid),
 						ghost_due_date: String(item.ghost_due_date),
 						ghost_data_vencimento: String(item.data_vencimento || ""),
 					},
-				});
+					{ replace: true }
+				);
 				return;
 			}
-			router.replace({
-				pathname: "/(auth)/(stack)/insert",
-				params: { id_transacao: String(item.id_transacao) },
-			});
+			openInsertFlow({ id_transacao: String(item.id_transacao) }, { replace: true });
 		},
-		[router]
+		[openInsertFlow]
 	);
 
 	const ultimoLancamento = useMemo(
@@ -255,13 +260,7 @@ export function useHomeFinance() {
 		dateRange.start !== defaultRange.start || dateRange.end !== defaultRange.end;
 
 	const resumo = useMemo(
-		() =>
-			calculateResumo(
-				lancamentos,
-				[...allLancamentos, ...lancamentos.filter((item) => item.is_ghost)],
-				dateRange.start,
-				dateRange.end
-			),
+		() => buildDashboardResumo(lancamentos, allLancamentos, dateRange),
 		[lancamentos, allLancamentos, dateRange.start, dateRange.end]
 	);
 
@@ -300,6 +299,8 @@ export function useHomeFinance() {
 		isFilterActive,
 		quickActions,
 		lancamentos: displayLancamentos,
+		periodLancamentos: lancamentos,
+		allLancamentos,
 		resumo,
 		banksResumo,
 		groupCards,

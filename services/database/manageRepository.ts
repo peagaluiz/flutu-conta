@@ -300,7 +300,8 @@ export function createManageRepository() {
 			if (Platform.OS === "web") {
 				let query = supabase
 					.from("pessoa")
-					.select("id_pessoa,nome,remote_id,user_id,family_id,is_family_shared")
+					.select("id_pessoa,nome,user_id,family_id,is_family_shared")
+					.eq("deleted", 0)
 					.order("nome", { ascending: true });
 
 				query = applyWebVisibility(query, visibility);
@@ -334,7 +335,8 @@ export function createManageRepository() {
 			if (Platform.OS === "web") {
 				let query = supabase
 					.from("pessoa")
-					.select("id_pessoa,nome,remote_id,user_id,family_id,is_family_shared")
+					.select("id_pessoa,nome,user_id,family_id,is_family_shared")
+					.eq("deleted", 0)
 					.order("nome", { ascending: true });
 
 				query = applyWebVisibility(query, visibility);
@@ -820,7 +822,8 @@ export function createManageRepository() {
 			if (Platform.OS === "web") {
 				let query = supabase
 					.from("imobilizado")
-					.select("id_imobilizado,codigo,descricao,remote_id,user_id,family_id,is_family_shared")
+					.select("id_imobilizado,codigo,descricao,user_id,family_id,is_family_shared")
+					.eq("deleted", 0)
 					.order("descricao", { ascending: true });
 
 				query = applyWebVisibility(query, visibility);

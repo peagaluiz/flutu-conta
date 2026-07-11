@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert } from "react-native";
-import { useRouter } from "expo-router";
+import { Alert } from "@/utils/alert";
+import { useOpenInsert } from "@/hooks/useOpenInsert";
 import { getItemType } from "@/utils/auth/launches/sections";
 
 export function useLaunchesEditor({
@@ -10,7 +10,7 @@ export function useLaunchesEditor({
 	userData,
 	loadData,
 }) {
-	const router = useRouter();
+	const openInsert = useOpenInsert();
 
 	const [editorOpen, setEditorOpen] = useState(false);
 	const [editorMode, setEditorMode] = useState("create");
@@ -82,11 +82,11 @@ export function useLaunchesEditor({
 
 	const openCreate = useCallback(() => {
 		if (section === "transacoes") {
-			router.push({ pathname: "/(auth)/(stack)/insert", params: { from: "launches" } });
+			openInsert({ from: "launches" });
 			return;
 		}
 		if (section === "recorrencias") {
-			router.push({ pathname: "/(auth)/(stack)/insert", params: { from: "launches", recurrence_mode: "recorrente" } });
+			openInsert({ from: "launches", recurrence_mode: "recorrente" });
 			return;
 		}
 		if (section === "bancos") {
@@ -104,28 +104,22 @@ export function useLaunchesEditor({
 		setShareWithFamily(false);
 		setSelectedPessoaId(null);
 		setEditorOpen(true);
-	}, [router, section]);
+	}, [openInsert, section]);
 
 	const openEdit = useCallback(
 		(item) => {
 			const itemType = getItemType(item);
 			if (itemType === "transacoes") {
 				if (item.is_ghost) {
-					router.push({
-						pathname: "/(auth)/(stack)/insert",
-						params: {
-							ghost_recurrence_uuid: String(item.recurrence_uuid),
-							ghost_due_date: String(item.ghost_due_date),
-							ghost_data_vencimento: String(item.data_vencimento || ""),
-							from: "launches",
-						},
+					openInsert({
+						ghost_recurrence_uuid: String(item.recurrence_uuid),
+						ghost_due_date: String(item.ghost_due_date),
+						ghost_data_vencimento: String(item.data_vencimento || ""),
+						from: "launches",
 					});
 					return;
 				}
-				router.push({
-					pathname: "/(auth)/(stack)/insert",
-					params: { id_transacao: String(item.id_transacao), from: "launches" },
-				});
+				openInsert({ id_transacao: String(item.id_transacao), from: "launches" });
 				return;
 			}
 			setEditorMode("edit");
@@ -149,7 +143,7 @@ export function useLaunchesEditor({
 			setSelectedPessoaId(null);
 			setEditorOpen(true);
 		},
-		[router]
+		[openInsert]
 	);
 
 	const selectPessoaOption = useCallback((pessoa) => {

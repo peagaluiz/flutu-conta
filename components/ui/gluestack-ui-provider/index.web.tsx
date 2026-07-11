@@ -80,17 +80,12 @@ export function GluestackUIProvider({
     }
   }, []);
 
+  // O tema pré-paint é aplicado pelo script inline em app/+html.js.
+  // Injetar outro script aqui gravaria o modo resolvido em build time no HTML
+  // estático e sobrescreveria o tema correto antes da hidratação.
   return (
-    <>
-      <script
-        suppressHydrationWarning
-        dangerouslySetInnerHTML={{
-          __html: `(${script.toString()})('${mode}')`,
-        }}
-      />
-      <OverlayProvider>
-        <ToastProvider>{props.children}</ToastProvider>
-      </OverlayProvider>
-    </>
+    <OverlayProvider>
+      <ToastProvider>{props.children}</ToastProvider>
+    </OverlayProvider>
   );
 }

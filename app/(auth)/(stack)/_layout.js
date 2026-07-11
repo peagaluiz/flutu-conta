@@ -3,11 +3,16 @@ import { Pressable } from "react-native";
 import { ChevronLeft } from "lucide-react-native";
 import { useTheme } from "@/components/ui/gluestack-ui-provider/ThemeProvider/ThemeProvider";
 import { StackHeader } from "@/components/header/StackHeader";
+import { LAUNCHES_PATH } from "@/utils/navigation";
+import { useIsDesktopWeb } from "@/hooks/useIsDesktopWeb";
 
 function InsertBackButton({ isDarkMode }) {
 	const router = useRouter();
 	const params = useLocalSearchParams();
-	const dest = params?.from === "launches" ? "/(auth)/(tabs)/launches" : "/";
+	const isDesktopWeb = useIsDesktopWeb();
+	const dest = params?.from === "launches" ? LAUNCHES_PATH : "/";
+	// No desktop web a navegação já é feita pelo drawer; o botão de voltar é desnecessário.
+	if (isDesktopWeb) return null;
 	return (
 		<Pressable
 			onPress={() => router.replace(dest)}

@@ -20,6 +20,10 @@ import {
 	projectGhostOccurrences,
 } from "@/services/database/recurrenceProjection";
 import {
+	listRecorrenciasWeb,
+	projectGhostOccurrencesWeb,
+} from "@/services/database/recurrenceWeb";
+import {
 	fetchRemoteTransacaoById,
 	syncAllPendingData,
 	syncPendingTransacoes,
@@ -111,11 +115,16 @@ function normalizeTransacaoPessoa<
 	T extends {
 		pessoa?: string | null;
 		pessoa_rel?: { nome?: string | null } | null;
+		categoria?: string | null;
+		categoria_rel?: { nome?: string | null } | null;
 		family_id?: number | null;
 		is_family_shared?: number | boolean | null;
 	}
 >(row: T, fallbackFamilyId?: number | null) {
-	const { pessoa_rel, ...rest } = row as T & { pessoa_rel?: { nome?: string | null } | null };
+	const { pessoa_rel, categoria_rel, ...rest } = row as T & {
+		pessoa_rel?: { nome?: string | null } | null;
+		categoria_rel?: { nome?: string | null } | null;
+	};
 	const shouldFallbackFamily =
 		(rest.family_id == null || Number(rest.family_id) <= 0) &&
 		Number(rest.is_family_shared ?? 0) === 1 &&
@@ -124,6 +133,7 @@ function normalizeTransacaoPessoa<
 	return {
 		...rest,
 		pessoa: pessoa_rel?.nome ?? rest.pessoa ?? null,
+		categoria: categoria_rel?.nome ?? rest.categoria ?? null,
 		family_id: shouldFallbackFamily ? Number(fallbackFamilyId) : rest.family_id ?? null,
 	};
 }
@@ -213,14 +223,9 @@ export function createTransacoesRepository() {
 			};
 
 			if (Platform.OS === "web") {
-				const webPayload = {
-					...payload,
-					updated_at: null,
-				};
-
 				const { data: inserted, error } = await supabase
 					.from("transacoes")
-					.insert(webPayload)
+					.insert(payload)
 					.select("id_transacao")
 					.single();
 
@@ -284,7 +289,6 @@ export function createTransacoesRepository() {
 								id_fatura: idFatura,
 								parcela_atual: parcela.parcelaAtual,
 								parcela_total: parcela.parcelaTotal,
-								updated_at: null,
 							})
 							.select("id_transacao")
 							.single()
@@ -472,9 +476,19 @@ export function createTransacoesRepository() {
 			}
 
 			if (Platform.OS === "web") {
+				const hasPaging = !id && !!params?.page && !!params?.limit;
+				// Fantasmas de recorrência (previstas) só quando há dateTo e não filtrando por baixa,
+				// espelhando o branch nativo. A projeção roda em JS sobre dados do Supabase.
+				const wantGhosts =
+					!id && !!params?.dateTo && params?.dateField !== "data_baixa";
+				// Espelha o SELECT/ordenação do SQLite: traz o nome da categoria (JOIN),
+				// ignora deletados e ordena não-baixados primeiro, depois por vencimento.
 				let query = supabase
 					.from("transacoes")
-					.select("*, pessoa_rel:pessoa(nome)")
+					.select("*, pessoa_rel:pessoa(nome), categoria_rel:categoria_catalogo(nome)")
+					.eq("deleted", 0)
+					.order("data_baixa", { ascending: true, nullsFirst: true })
+					.order("data_vencimento", { ascending: true, nullsFirst: false })
 					.order("id_transacao", { ascending: false });
 
 				query = applySupabaseVisibility(query, visibility);
@@ -496,8 +510,9 @@ export function createTransacoesRepository() {
 				}
 
 				if (!id && params?.page && params?.limit) {
-					const from = (params.page - 1) * params.limit;
-					const to = from + params.limit - 1;
+					// Com fantasmas, sobre-busca a partir de 0 para mesclar antes de paginar (igual ao nativo).
+					const from = wantGhosts ? 0 : (params.page - 1) * params.limit;
+					const to = params.page * params.limit - 1;
 					query = query.range(from, to);
 				}
 
@@ -513,13 +528,35 @@ export function createTransacoesRepository() {
 						recurrence_sequence: null,
 					};
 				}
-				return (data ?? []).map((row: any) => ({
+				const normalized = (data ?? []).map((row: any) => ({
 					...normalizeTransacaoPessoa(row, visibility.familyId),
 					is_from_recurrence: 0,
 					recurrence_uuid: null,
 					recurrence_frequency: null,
 					recurrence_sequence: null,
 				}));
+
+				if (!wantGhosts) return normalized;
+
+				const offset = hasPaging ? ((params?.page ?? 1) - 1) * (params?.limit ?? 0) : 0;
+				const limit = params?.limit ?? 0;
+
+				const ghosts = await projectGhostOccurrencesWeb({
+					dateFrom: params?.dateFrom ?? null,
+					dateTo: params?.dateTo,
+					visibility,
+				});
+
+				if (!ghosts.length) {
+					return hasPaging ? normalized.slice(offset, offset + limit) : normalized;
+				}
+
+				const merged = [
+					...normalized,
+					...ghosts.map((ghost) => normalizeTransacaoPessoa(ghost, visibility.familyId)),
+				].sort(compareTransacaoRows);
+
+				return hasPaging ? merged.slice(offset, offset + limit) : merged;
 			}
 
 			if (!db) throw new Error("Banco local indisponivel");
@@ -649,7 +686,11 @@ export function createTransacoesRepository() {
 			validateAndGeneratePendingRecurrences,
 			materializeRecurrenceOccurrence,
 			getRecorrenciaByUuid,
-			listRecorrencias,
+			listRecorrencias: (params?: {
+				visibilityScope?: VisibilityScope;
+				userId?: string | null;
+				familyId?: number | null;
+			}) => (Platform.OS === "web" ? listRecorrenciasWeb(params) : listRecorrencias(params)),
 			pauseRecorrencia,
 			activateRecorrencia,
 			deleteRecorrencia,
@@ -657,6 +698,15 @@ export function createTransacoesRepository() {
 			applyEditToRecurrenceTransacoes,
 
 		darBaixa: async (id_transacao: number, dataBaixa?: string | null) => {
+			if (Platform.OS === "web") {
+				const { error } = await supabase
+					.from("transacoes")
+					.update({ status: "pago", data_baixa: dataBaixa || nowISO(), updated_at: nowISO() })
+					.eq("id_transacao", id_transacao);
+				if (error) throw error.message;
+				return { updated: true };
+			}
+
 			if (!db) throw new Error("Banco local indisponivel");
 			await db.runAsync(
 				`UPDATE transacoes
@@ -674,6 +724,15 @@ export function createTransacoesRepository() {
 		},
 
 		removerBaixa: async (id_transacao: number) => {
+			if (Platform.OS === "web") {
+				const { error } = await supabase
+					.from("transacoes")
+					.update({ status: "pendente", data_baixa: null, updated_at: nowISO() })
+					.eq("id_transacao", id_transacao);
+				if (error) throw error.message;
+				return { updated: true };
+			}
+
 			if (!db) throw new Error("Banco local indisponivel");
 			await db.runAsync(
 				`UPDATE transacoes

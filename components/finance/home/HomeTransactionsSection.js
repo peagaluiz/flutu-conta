@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { Alert } from "react-native";
+import { useMemo, useState } from "react";
+import { View } from "react-native";
+import { Alert } from "@/utils/alert";
 import {
 	CheckCircle,
 	ChevronDown,
@@ -24,6 +25,8 @@ import { getThemeColors } from "@/constants/colors";
 import { formatCurrency, formatDate, toISODateString } from "@/utils/finance/helpers";
 import { LancamentoListItem } from "@/components/finance/home/LancamentoListItem";
 import { LancamentoSummary } from "@/components/finance/home/LancamentoSummary";
+import { useIsDesktopWeb } from "@/hooks/useIsDesktopWeb";
+import { getTableColumns, cellStyle } from "@/utils/auth/launches/tableColumns";
 
 const FATURA_STATUS_LABEL = { aberta: "Aberta", fechada: "Fechada", paga: "Paga" };
 
@@ -90,6 +93,170 @@ function FaturaGroupRow({ group, colors, expanded, onToggle, onPressItem }) {
 	);
 }
 
+function HomeTableHeaderRow({ columns, colors }) {
+	return (
+		<HStack
+			className="items-center"
+			style={{ paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border }}
+		>
+			{columns.map((col) => (
+				<View key={col.key} style={cellStyle(col)}>
+					<Text
+						className="text-[11px] font-semibold uppercase"
+						numberOfLines={1}
+						style={{
+							color: colors.textSecondary,
+							letterSpacing: 0.4,
+							textAlign: col.align === "right" ? "right" : "left",
+						}}
+					>
+						{col.label}
+					</Text>
+				</View>
+			))}
+			<View style={{ width: 24 }} />
+		</HStack>
+	);
+}
+
+function HomeTableDataRow({ item, columns, colors, onPress, indent = false }) {
+	return (
+		<Pressable onPress={onPress}>
+			<HStack
+				className="items-center"
+				style={{
+					paddingVertical: 9,
+					paddingLeft: indent ? 20 : 0,
+					borderBottomWidth: 1,
+					borderBottomColor: colors.border,
+				}}
+			>
+				{columns.map((col) => (
+					<View key={col.key} style={cellStyle(col)}>
+						{col.render(item, {}, col)}
+					</View>
+				))}
+				<View style={{ width: 24 }} />
+			</HStack>
+		</Pressable>
+	);
+}
+
+function faturaCellContent(col, group, colors) {
+	switch (col.key) {
+		case "tipo":
+			return <CreditCard size={20} color="#F59E0B" />;
+		case "descricao":
+			return (
+				<Text
+					className="text-sm font-semibold"
+					numberOfLines={1}
+					ellipsizeMode="tail"
+					style={{ color: colors.textPrimary }}
+				>
+					Fatura {group.banco_nome}
+				</Text>
+			);
+		case "categoria":
+			return (
+				<Text className="text-xs" numberOfLines={1} style={{ color: colors.textSecondary }}>
+					{group.items.length} lançamento{group.items.length > 1 ? "s" : ""}
+				</Text>
+			);
+		case "data":
+			return (
+				<Text className="text-xs" numberOfLines={1} style={{ color: colors.textSecondary }}>
+					{formatDate(group.data_vencimento)}
+				</Text>
+			);
+		case "valor":
+			return (
+				<Text
+					className="text-sm font-semibold"
+					numberOfLines={1}
+					style={{ color: colors.textPrimary, textAlign: "right" }}
+				>
+					{formatCurrency(group.valor)}
+				</Text>
+			);
+		case "status":
+			return (
+				<Text className="text-xs" numberOfLines={1} style={{ color: colors.textSecondary }}>
+					{FATURA_STATUS_LABEL[group.status] ?? group.status}
+				</Text>
+			);
+		default:
+			return null;
+	}
+}
+
+function HomeFaturaTableRow({ group, columns, colors, expanded, onToggle, onPressItem }) {
+	return (
+		<>
+			<Pressable onPress={onToggle}>
+				<HStack
+					className="items-center"
+					style={{ paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border }}
+				>
+					{columns.map((col) => (
+						<View key={col.key} style={cellStyle(col)}>
+							{faturaCellContent(col, group, colors)}
+						</View>
+					))}
+					<View style={{ width: 24, alignItems: "center" }}>
+						{expanded ? (
+							<ChevronUp size={16} color={colors.textSecondary} />
+						) : (
+							<ChevronDown size={16} color={colors.textSecondary} />
+						)}
+					</View>
+				</HStack>
+			</Pressable>
+			{expanded
+				? group.items.map((child) => (
+						<HomeTableDataRow
+							key={String(child.id_transacao)}
+							item={child}
+							columns={columns}
+							colors={colors}
+							onPress={() => onPressItem(child)}
+							indent
+						/>
+				  ))
+				: null}
+		</>
+	);
+}
+
+function HomeTransactionsTable({ items, columns, colors, previewLimit, expandedFaturas, toggleFatura, onPressItem }) {
+	return (
+		<Box>
+			<HomeTableHeaderRow columns={columns} colors={colors} />
+			{items.slice(0, previewLimit).map((item) =>
+				item.is_fatura_group ? (
+					<HomeFaturaTableRow
+						key={String(item.id_transacao)}
+						group={item}
+						columns={columns}
+						colors={colors}
+						expanded={expandedFaturas.has(item.id_fatura)}
+						onToggle={() => toggleFatura(item.id_fatura)}
+						onPressItem={onPressItem}
+					/>
+				) : (
+					<HomeTableDataRow
+						key={String(item.id_transacao)}
+						item={item}
+						columns={columns}
+						colors={colors}
+						onPress={() => onPressItem(item)}
+					/>
+				)
+			)}
+		</Box>
+	);
+}
+
 export function HomeTransactionsSection({
 	loading,
 	items,
@@ -102,6 +269,8 @@ export function HomeTransactionsSection({
 }) {
 	const { theme } = useTheme();
 	const colors = getThemeColors(theme);
+	const isDesktopWeb = useIsDesktopWeb();
+	const columns = useMemo(() => getTableColumns("transacoes", colors), [colors]);
 
 	const [menuItem, setMenuItem] = useState(null);
 	const [showDatePicker, setShowDatePicker] = useState(false);
@@ -182,24 +351,36 @@ export function HomeTransactionsSection({
 					Nenhum lançamento encontrado. Arraste para atualizar.
 				</Text>
 			) : (
-				<Box className="gap-1">
-					{items.slice(0, previewLimit).map((item) =>
-						item.is_fatura_group ? (
-							<FaturaGroupRow
-								key={String(item.id_transacao)}
-								group={item}
-								colors={colors}
-								expanded={expandedFaturas.has(item.id_fatura)}
-								onToggle={() => toggleFatura(item.id_fatura)}
-								onPressItem={(child) => setMenuItem(child)}
-							/>
-						) : (
-							<LancamentoListItem
-								key={String(item.id_transacao)}
-								item={item}
-								onPress={() => setMenuItem(item)}
-								onLongPress={undefined}
-							/>
+				<Box className={isDesktopWeb ? "" : "gap-1"}>
+					{isDesktopWeb ? (
+						<HomeTransactionsTable
+							items={items}
+							columns={columns}
+							colors={colors}
+							previewLimit={previewLimit}
+							expandedFaturas={expandedFaturas}
+							toggleFatura={toggleFatura}
+							onPressItem={(item) => setMenuItem(item)}
+						/>
+					) : (
+						items.slice(0, previewLimit).map((item) =>
+							item.is_fatura_group ? (
+								<FaturaGroupRow
+									key={String(item.id_transacao)}
+									group={item}
+									colors={colors}
+									expanded={expandedFaturas.has(item.id_fatura)}
+									onToggle={() => toggleFatura(item.id_fatura)}
+									onPressItem={(child) => setMenuItem(child)}
+								/>
+							) : (
+								<LancamentoListItem
+									key={String(item.id_transacao)}
+									item={item}
+									onPress={() => setMenuItem(item)}
+									onLongPress={undefined}
+								/>
+							)
 						)
 					)}
 
@@ -210,6 +391,7 @@ export function HomeTransactionsSection({
 								style={{
 									backgroundColor: colors.surfaceMuted,
 									borderColor: colors.border,
+									marginTop: isDesktopWeb ? 12 : 0,
 								}}
 							>
 								<MoreHorizontal

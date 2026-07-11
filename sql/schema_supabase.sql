@@ -62,13 +62,12 @@ $$ LANGUAGE plpgsql
 
 GRANT EXECUTE ON FUNCTION private.fill_user_id_on_insert() TO authenticated;
 
--- Evita que UPDATE sobrescreva user_id com null
+-- user_id é imutável em UPDATE: impede que um membro da família (ou o próprio
+-- cliente) reatribua a posse de uma linha compartilhada para outro usuário.
 CREATE OR REPLACE FUNCTION private.preserve_user_id_on_update()
 RETURNS TRIGGER AS $$
 BEGIN
-    IF NEW.user_id IS NULL THEN
-        NEW.user_id = OLD.user_id;
-    END IF;
+    NEW.user_id = OLD.user_id;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql
@@ -513,6 +512,9 @@ CREATE INDEX IF NOT EXISTS idx_recorrencia_transacoes_due_date    ON public.reco
 
 -- cartao_faturas
 CREATE INDEX IF NOT EXISTS idx_cartao_faturas_banco   ON public.cartao_faturas(id_banco, mes_referencia);
+-- Uma única fatura ativa por (cartão, mês de referência): impede duplicatas que
+-- quebram o parcelamento (find-or-create não é atômico).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cartao_faturas_banco_mes ON public.cartao_faturas(id_banco, mes_referencia) WHERE deleted = 0;
 CREATE INDEX IF NOT EXISTS idx_cartao_faturas_user    ON public.cartao_faturas(user_id);
 CREATE INDEX IF NOT EXISTS idx_cartao_faturas_family  ON public.cartao_faturas(family_id, is_family_shared);
 CREATE INDEX IF NOT EXISTS idx_transacoes_id_fatura   ON public.transacoes(id_fatura);
@@ -605,8 +607,15 @@ CREATE POLICY "banco_select" ON public.banco FOR SELECT
             AND private.is_familia_member(family_id))
     );
 
+-- O trigger fill_user_id_on_insert preenche user_id = auth.uid() quando vier null,
+-- então o WITH CHECK abaixo valida a linha já com o dono resolvido. A segunda
+-- condição permite inserir em nome da família apenas se o autor for membro ativo.
 CREATE POLICY "banco_insert" ON public.banco FOR INSERT
-    WITH CHECK (auth.uid() IS NOT NULL);
+    WITH CHECK (
+        user_id = auth.uid()
+        OR (is_family_shared = 1 AND family_id IS NOT NULL
+            AND private.is_familia_member(family_id))
+    );
 
 CREATE POLICY "banco_update" ON public.banco FOR UPDATE
     USING (
@@ -641,12 +650,24 @@ CREATE POLICY "profiles_update" ON public.profiles FOR UPDATE
 
 -- ─── familias ─────────────────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "familias_select" ON public.familias;
+DROP POLICY IF EXISTS "familias_select_invited" ON public.familias;
 DROP POLICY IF EXISTS "familias_insert" ON public.familias;
 DROP POLICY IF EXISTS "familias_update" ON public.familias;
 DROP POLICY IF EXISTS "familias_delete" ON public.familias;
 
 CREATE POLICY "familias_select" ON public.familias FOR SELECT
     USING (owner_user_id = auth.uid() OR private.is_familia_member(id));
+
+-- Convidado com convite pendente vê o nome da família antes de aceitar
+CREATE POLICY "familias_select_invited" ON public.familias FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.familia_convites c
+            WHERE c.family_id = familias.id
+              AND c.status = 'pending'
+              AND lower(c.email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+        )
+    );
 
 CREATE POLICY "familias_insert" ON public.familias FOR INSERT
     WITH CHECK (owner_user_id = auth.uid());
@@ -666,11 +687,21 @@ DROP POLICY IF EXISTS "familia_membros_delete" ON public.familia_membros;
 CREATE POLICY "familia_membros_select" ON public.familia_membros FOR SELECT
     USING (user_id = auth.uid() OR private.is_familia_member(family_id));
 
+-- Owner adiciona membros; convidado com convite pendente entra por conta própria
 CREATE POLICY "familia_membros_insert" ON public.familia_membros FOR INSERT
     WITH CHECK (
         EXISTS (
             SELECT 1 FROM public.familias
             WHERE id = family_id AND owner_user_id = auth.uid()
+        )
+        OR (
+            user_id = auth.uid()
+            AND EXISTS (
+                SELECT 1 FROM public.familia_convites c
+                WHERE c.family_id = familia_membros.family_id
+                  AND c.status = 'pending'
+                  AND lower(c.email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+            )
         )
     );
 
@@ -696,9 +727,16 @@ CREATE POLICY "familia_membros_delete" ON public.familia_membros FOR DELETE
 DROP POLICY IF EXISTS "familia_convites_select" ON public.familia_convites;
 DROP POLICY IF EXISTS "familia_convites_insert" ON public.familia_convites;
 DROP POLICY IF EXISTS "familia_convites_update" ON public.familia_convites;
+DROP POLICY IF EXISTS "familia_convites_select_invited" ON public.familia_convites;
+DROP POLICY IF EXISTS "familia_convites_update_invited" ON public.familia_convites;
 
 CREATE POLICY "familia_convites_select" ON public.familia_convites FOR SELECT
     USING (private.is_familia_member(family_id));
+
+-- O convidado (identificado pelo e-mail do JWT) enxerga o próprio convite,
+-- mesmo antes de ser membro da família
+CREATE POLICY "familia_convites_select_invited" ON public.familia_convites FOR SELECT
+    USING (lower(email) = lower(coalesce(auth.jwt() ->> 'email', '')));
 
 CREATE POLICY "familia_convites_insert" ON public.familia_convites FOR INSERT
     WITH CHECK (
@@ -708,6 +746,17 @@ CREATE POLICY "familia_convites_insert" ON public.familia_convites FOR INSERT
 
 CREATE POLICY "familia_convites_update" ON public.familia_convites FOR UPDATE
     USING (private.is_familia_member(family_id));
+
+-- O convidado pode responder (aceitar/recusar) o próprio convite pendente
+CREATE POLICY "familia_convites_update_invited" ON public.familia_convites FOR UPDATE
+    USING (
+        status = 'pending'
+        AND lower(email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+    )
+    WITH CHECK (
+        lower(email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+        AND status IN ('accepted', 'cancelled')
+    );
 
 -- ─── pessoa ───────────────────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "pessoa_select" ON public.pessoa;
@@ -722,9 +771,12 @@ CREATE POLICY "pessoa_select" ON public.pessoa FOR SELECT
             AND private.is_familia_member(family_id))
     );
 
--- O trigger fill_user_id_on_insert garante user_id = auth.uid() mesmo se vier null
 CREATE POLICY "pessoa_insert" ON public.pessoa FOR INSERT
-    WITH CHECK (auth.uid() IS NOT NULL);
+    WITH CHECK (
+        user_id = auth.uid()
+        OR (is_family_shared = 1 AND family_id IS NOT NULL
+            AND private.is_familia_member(family_id))
+    );
 
 CREATE POLICY "pessoa_update" ON public.pessoa FOR UPDATE
     USING (
@@ -764,7 +816,11 @@ CREATE POLICY "imobilizado_select" ON public.imobilizado FOR SELECT
     );
 
 CREATE POLICY "imobilizado_insert" ON public.imobilizado FOR INSERT
-    WITH CHECK (auth.uid() IS NOT NULL);
+    WITH CHECK (
+        user_id = auth.uid()
+        OR (is_family_shared = 1 AND family_id IS NOT NULL
+            AND private.is_familia_member(family_id))
+    );
 
 CREATE POLICY "imobilizado_update" ON public.imobilizado FOR UPDATE
     USING (
@@ -790,7 +846,11 @@ CREATE POLICY "transacoes_select" ON public.transacoes FOR SELECT
     );
 
 CREATE POLICY "transacoes_insert" ON public.transacoes FOR INSERT
-    WITH CHECK (auth.uid() IS NOT NULL);
+    WITH CHECK (
+        user_id = auth.uid()
+        OR (is_family_shared = 1 AND family_id IS NOT NULL
+            AND private.is_familia_member(family_id))
+    );
 
 CREATE POLICY "transacoes_update" ON public.transacoes FOR UPDATE
     USING (
@@ -818,7 +878,11 @@ CREATE POLICY "recorrencias_select" ON public.recorrencias FOR SELECT
     );
 
 CREATE POLICY "recorrencias_insert" ON public.recorrencias FOR INSERT
-    WITH CHECK (auth.uid() IS NOT NULL);
+    WITH CHECK (
+        user_id = auth.uid()
+        OR (is_family_shared = 1 AND family_id IS NOT NULL
+            AND private.is_familia_member(family_id))
+    );
 
 CREATE POLICY "recorrencias_update" ON public.recorrencias FOR UPDATE
     USING (
@@ -880,7 +944,11 @@ CREATE POLICY "cartao_faturas_select" ON public.cartao_faturas FOR SELECT
     );
 
 CREATE POLICY "cartao_faturas_insert" ON public.cartao_faturas FOR INSERT
-    WITH CHECK (auth.uid() IS NOT NULL);
+    WITH CHECK (
+        user_id = auth.uid()
+        OR (is_family_shared = 1 AND family_id IS NOT NULL
+            AND private.is_familia_member(family_id))
+    );
 
 CREATE POLICY "cartao_faturas_update" ON public.cartao_faturas FOR UPDATE
     USING (

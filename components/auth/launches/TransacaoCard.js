@@ -7,15 +7,8 @@ import ActionButton from "./ActionButton";
 import CardBase from "./CardBase";
 import { CheckCircle, CheckCircle2, Circle, Pencil, Trash2 } from "lucide-react-native";
 import { formatCurrency, formatDate } from "@/utils/finance/helpers";
+import { getDescricao } from "@/utils/finance/getDescricao";
 import { PrevistaBadge } from "@/components/finance/PrevistaBadge";
-
-function getDescricao(item) {
-    try {
-        const parsed = JSON.parse(item.json || "{}");
-        if (parsed?.descricao) return parsed.descricao;
-    } catch { }
-    return item.observacao || "";
-}
 
 function TransacaoCard({
     item,

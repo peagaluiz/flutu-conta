@@ -1,5 +1,6 @@
 import React from 'react';
 import { skeletonStyle, skeletonTextStyle } from './styles';
+import { flattenWebStyle } from '../utils/flattenWebStyle';
 
 import type { VariantProps } from '@gluestack-ui/nativewind-utils';
 
@@ -18,6 +19,7 @@ const Skeleton = React.forwardRef<HTMLDivElement, ISkeletonProps>(
       speed = 2,
       startColor = 'bg-background-200',
       isLoaded = false,
+      style,
       ...props
     },
     ref
@@ -32,6 +34,7 @@ const Skeleton = React.forwardRef<HTMLDivElement, ISkeletonProps>(
             class: className,
           })}`}
           {...props}
+          style={flattenWebStyle(style)}
         />
       );
     } else {
@@ -56,6 +59,7 @@ const SkeletonText = React.forwardRef<HTMLDivElement, ISkeletonTextProps>(
       startColor = 'bg-background-200',
       gap = 2,
       children,
+      style,
       ...props
     },
     ref
@@ -76,6 +80,7 @@ const SkeletonText = React.forwardRef<HTMLDivElement, ISkeletonTextProps>(
                   class: className,
                 })}`}
                 {...props}
+                style={flattenWebStyle(style)}
               />
             ))}
           </div>
@@ -88,6 +93,7 @@ const SkeletonText = React.forwardRef<HTMLDivElement, ISkeletonTextProps>(
               class: className,
             })}`}
             {...props}
+            style={flattenWebStyle(style)}
           />
         );
       }

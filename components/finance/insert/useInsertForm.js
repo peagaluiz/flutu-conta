@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert } from "react-native";
+import { Alert } from "@/utils/alert";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
@@ -15,11 +15,15 @@ import {
 	toISODate,
 } from "@/components/finance/insert/insertFormConfig";
 import { buildInstallmentPlan } from "@/services/database/cartaoCalc";
+import { LAUNCHES_PATH } from "@/utils/navigation";
 
-export function useInsertForm() {
+export function useInsertForm(options = {}) {
+	const { params: paramsOverride, onDone, onCancel } = options;
+	const inModal = !!onDone || !!onCancel;
 	const router = useRouter();
 	const navigation = useNavigation();
-	const params = useLocalSearchParams();
+	const routeParams = useLocalSearchParams();
+	const params = paramsOverride ?? routeParams;
 	const { showNewToast } = useErrorToast();
 	const { startSaving, showSuccess, showError } = useSaveFeedback();
 	const { userData, family } = useAuth();
@@ -66,6 +70,42 @@ export function useInsertForm() {
 		const v = Array.isArray(params?.from) ? params.from[0] : params?.from;
 		return v === "launches" ? "launches" : null;
 	}, [params?.from]);
+
+	// No modal (desktop web) o fim do fluxo é controlado pelo host; na tela cheia,
+	// navega de volta pra origem (Lançamentos ou Início).
+	const finish = useCallback(
+		(savedId) => {
+			if (onDone) {
+				onDone(savedId ? { savedId: String(savedId) } : {});
+				return;
+			}
+			if (fromParam === "launches") {
+				router.replace(
+					savedId
+						? {
+								pathname: LAUNCHES_PATH,
+								params: {
+									highlightId: String(savedId),
+									highlightTs: String(Date.now()),
+								},
+						  }
+						: LAUNCHES_PATH
+				);
+			} else {
+				router.replace("/");
+			}
+		},
+		[onDone, fromParam, router]
+	);
+
+	const cancel = useCallback(() => {
+		if (onCancel) {
+			onCancel();
+			return;
+		}
+		if (fromParam === "launches") router.replace(LAUNCHES_PATH);
+		else router.replace("/");
+	}, [onCancel, fromParam, router]);
 
 	const ghostRecurrenceUuid = useMemo(() => {
 		const v = Array.isArray(params?.ghost_recurrence_uuid)
@@ -174,7 +214,7 @@ export function useInsertForm() {
 				});
 				if (!t) {
 					showNewToast("warning", "Lançamento não encontrado.", "Atenção");
-					router.replace("/");
+					cancel();
 					return;
 				}
 				let descricao = "";
@@ -237,7 +277,7 @@ export function useInsertForm() {
 					String(error || "Falha ao carregar lançamento"),
 					"Erro"
 				);
-				router.replace("/");
+				cancel();
 			} finally {
 				setIsLoading(false);
 			}
@@ -253,7 +293,7 @@ export function useInsertForm() {
 				const rec = await getRecorrenciaByUuid(ghostRecurrenceUuid);
 				if (!rec) {
 					showNewToast("warning", "Recorrência não encontrada.", "Atenção");
-					router.replace(fromParam === "launches" ? "/(auth)/(tabs)/launches" : "/");
+					cancel();
 					return;
 				}
 				const template = rec.template ?? {};
@@ -292,7 +332,7 @@ export function useInsertForm() {
 					String(error || "Falha ao carregar lançamento"),
 					"Erro"
 				);
-				router.replace(fromParam === "launches" ? "/(auth)/(tabs)/launches" : "/");
+				cancel();
 			} finally {
 				setIsLoading(false);
 			}
@@ -309,17 +349,18 @@ export function useInsertForm() {
 	}, [categoriaParam, dataVencimentoParam, editId, recurrenceModeParam, setValue, tipoParam]);
 
 	useEffect(() => {
+		if (inModal) return;
 		return navigation.addListener("beforeRemove", (event) => {
 			const type = event?.data?.action?.type;
 			if (type !== "GO_BACK" && type !== "POP" && type !== "POP_TO_TOP") return;
 			event.preventDefault();
 			if (fromParam === "launches") {
-				router.replace("/(auth)/(tabs)/launches");
+				router.replace(LAUNCHES_PATH);
 			} else {
 				router.replace("/");
 			}
 		});
-	}, [navigation, router, fromParam]);
+	}, [navigation, router, fromParam, inModal]);
 
 	const handleBancoSelect = (banco) => {
 		if (!banco) {
@@ -453,21 +494,7 @@ export function useInsertForm() {
 			}
 
 			await showSuccess(successMessage);
-			if (fromParam === "launches") {
-				router.replace(
-					savedId
-						? {
-								pathname: "/(auth)/(tabs)/launches",
-								params: {
-									highlightId: String(savedId),
-									highlightTs: String(Date.now()),
-								},
-							}
-						: "/(auth)/(tabs)/launches"
-				);
-			} else {
-				router.replace("/");
-			}
+			finish(savedId);
 		} catch (error) {
 			showError(String(error || "Não foi possível salvar o lançamento."));
 			setIsSaving(false);
@@ -485,13 +512,12 @@ export function useInsertForm() {
 		editId,
 		family?.id,
 		findPessoaByName,
-		fromParam,
+		finish,
 		ghostDueDate,
 		ghostMode,
 		ghostRecurrenceUuid,
 		materializeRecurrenceOccurrence,
 		recurrenceMeta,
-		router,
 		selectedCatalogBanco,
 		showError,
 		showSuccess,
@@ -544,7 +570,7 @@ export function useInsertForm() {
 		showRecurrenceEndPicker,
 		setShowRecurrenceEndPicker,
 		handleSave,
-		handleBack: () => fromParam === "launches" ? router.replace("/(auth)/(tabs)/launches") : router.replace("/"),
+		handleBack: cancel,
 		family,
 		selectedCatalogBanco,
 		handleBancoSelect,

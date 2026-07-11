@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 
@@ -13,9 +14,15 @@ export async function pickOfxFile() {
 	const file = res.assets?.[0];
 	if (!file?.uri) return null;
 
-	const content = await FileSystem.readAsStringAsync(file.uri, {
-		encoding: FileSystem.EncodingType.UTF8,
-	});
+	// expo-file-system não funciona na web; lá o picker expõe o File do navegador
+	const content =
+		Platform.OS === "web"
+			? file.file
+				? await file.file.text()
+				: await (await fetch(file.uri)).text()
+			: await FileSystem.readAsStringAsync(file.uri, {
+					encoding: FileSystem.EncodingType.UTF8,
+				});
 
 	return { name: file.name ?? "extrato.ofx", content };
 }

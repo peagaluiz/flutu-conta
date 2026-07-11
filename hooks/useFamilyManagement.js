@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { Alert } from "react-native";
+import { Alert } from "@/utils/alert";
 import { useAuth } from "@/state/AuthContext";
 import { useErrorToast } from "@/components/ui/toast/useErrorToast";
 

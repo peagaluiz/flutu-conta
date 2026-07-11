@@ -4,10 +4,9 @@ import { useSyncProgress } from "@/state/SyncProgressContext";
 import React from "react";
 import { Platform } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-import * as FileSystem from "expo-file-system";
 import * as ImageManipulator from "expo-image-manipulator";
-import { useRouter } from "expo-router";
 import { useDatabase } from "@/hooks/useDatabase";
+import { useOpenFamily } from "@/hooks/useOpenFamily";
 import { HStack } from "@/components/ui/hstack";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,7 +23,7 @@ import { profileSchema } from "@/components/header/profileValidation";
 const HeaderWrapper = ({ navigation, theme }) => {
 	const { logOut, userData, family, updateUserProfile, updateUserAvatar, removeUserAvatar, createNewFamily } =
 		useAuth();
-	const router = useRouter();
+	const openFamily = useOpenFamily();
 	const { theme: currentTheme, toggleTheme } = useTheme();
 	const { syncAllPendingData } = useDatabase();
 	const { showNewToast } = useErrorToast();
@@ -140,12 +139,15 @@ const HeaderWrapper = ({ navigation, theme }) => {
 		const manipulated = await ImageManipulator.manipulateAsync(
 			asset.uri,
 			actions,
-			{ compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
+			{ compress: 0.8, format: ImageManipulator.SaveFormat.JPEG, base64: true }
 		);
 
-		const base64 = await FileSystem.readAsStringAsync(manipulated.uri, {
-			encoding: FileSystem.EncodingType.Base64,
-		});
+		// Na web o base64 pode vir como data URI completo
+		const base64 = manipulated.base64?.replace(/^data:.*?;base64,/, "");
+		if (!base64) {
+			showNewToast("error", "Não foi possível processar a imagem");
+			return;
+		}
 
 		setIsUploadingPhoto(true);
 		try {
@@ -174,7 +176,7 @@ const HeaderWrapper = ({ navigation, theme }) => {
 		handleClose();
 
 		if (family?.id) {
-			router.push("/(auth)/(stack)/family");
+			openFamily();
 			return;
 		}
 
@@ -196,7 +198,7 @@ const HeaderWrapper = ({ navigation, theme }) => {
 			await createNewFamily(cleanName);
 			setShowCreateFamilyModal(false);
 			showNewToast("success", "Família criada com sucesso");
-			router.push("/(auth)/(stack)/family");
+			openFamily();
 		} catch (error) {
 			showNewToast("error", error?.message || "Erro ao criar família");
 		} finally {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert } from "react-native";
+import { Alert } from "@/utils/alert";
 import { loadSectionData } from "@/utils/auth/launches/loaders";
 import { getDeleteAction, getItemKey, filterValidItems } from "@/utils/auth/launches/actions";
 import { getItemType } from "@/utils/auth/launches/sections";

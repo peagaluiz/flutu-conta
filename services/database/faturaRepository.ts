@@ -127,15 +127,18 @@ export function createFaturaRepository() {
 		// Busca (sem criar) a fatura de um cartão num mês de referência.
 		findFaturaByMes: async (idBanco: number, mesReferencia: string): Promise<FaturaRow | null> => {
 			if (Platform.OS === "web") {
+				// limit(1) em vez de maybeSingle: tolera faturas duplicadas (mesmo
+				// banco+mês) sem estourar erro de "múltiplas linhas".
 				const { data, error } = await supabase
 					.from("cartao_faturas")
 					.select("*")
 					.eq("id_banco", idBanco)
 					.eq("mes_referencia", mesReferencia)
 					.eq("deleted", 0)
-					.maybeSingle();
+					.order("id_fatura", { ascending: true })
+					.limit(1);
 				if (error) throw error.message;
-				return (data as FaturaRow) ?? null;
+				return ((data?.[0] as FaturaRow) ?? null);
 			}
 			if (!db) return null;
 			const row = await db.getFirstAsync<FaturaRow>(
@@ -168,14 +171,18 @@ export function createFaturaRepository() {
 			const sharedFamilyId = isFamilyShared && familyId ? familyId : null;
 
 			if (Platform.OS === "web") {
-				const { data: existing, error: findError } = await supabase
+				// limit(1) em vez de maybeSingle: se já houver fatura(s) para o mês,
+				// reaproveita a mais antiga; maybeSingle estouraria com duplicatas.
+				const { data: existingRows, error: findError } = await supabase
 					.from("cartao_faturas")
 					.select("id_fatura")
 					.eq("id_banco", idBanco)
 					.eq("mes_referencia", mesReferencia)
 					.eq("deleted", 0)
-					.maybeSingle();
+					.order("id_fatura", { ascending: true })
+					.limit(1);
 				if (findError) throw findError.message;
+				const existing = existingRows?.[0];
 				if (existing?.id_fatura) return existing.id_fatura;
 
 				const { data: inserted, error } = await supabase
