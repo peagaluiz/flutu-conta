@@ -1,6 +1,7 @@
 import { LogBox, Platform, View } from "react-native";
 import { PaperProvider } from "react-native-paper";
 import { registerTranslation, pt } from "react-native-paper-dates";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 
 LogBox.ignoreLogs([/shadow\*/, /pointerEvents is deprecated/]);
 
@@ -54,6 +55,7 @@ const ThemeBridge = () => {
     return (
         <GluestackUIProvider mode={theme}>
             <StackGroup />
+            {Platform.OS === "web" && <SpeedInsights />}
         </GluestackUIProvider>
     );
 };
