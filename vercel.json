@@ -1,16 +1,10 @@
 {
   "buildCommand": "npx expo export -p web",
-  "outputDirectory": "dist/client",
+  "outputDirectory": "dist",
   "framework": null,
-  "functions": {
-    "api/index.js": {
-      "includeFiles": "dist/server/**"
-    }
-  },
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" },
-    { "source": "/(.*)", "destination": "/api/index" }
-  ],
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "rewrites": [{ "source": "/:path*", "destination": "/" }],
   "headers": [
     {
       "source": "/(.*)",

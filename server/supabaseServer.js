@@ -20,17 +20,18 @@ function toSetCookie(name, value, options) {
 	});
 }
 
-// Cria um client Supabase por request. Web usa cookie httpOnly (via @supabase/ssr);
-// nativo manda Authorization: Bearer e o client roda "stateless" (sem cookies).
-export function createSupabaseForRequest(request) {
-	const cookieHeader = request.headers.get("cookie");
+// Cria um client Supabase por request (Node req do @vercel/node). Web usa
+// cookie httpOnly (via @supabase/ssr); nativo manda Authorization: Bearer e o
+// client roda "stateless" (sem cookies).
+export function createSupabaseForRequest(req) {
+	const cookieHeader = req.headers?.cookie || null;
 	const initial = cookieHeader
 		? Object.entries(parse(cookieHeader)).map(([name, value]) => ({ name, value: value ?? "" }))
 		: [];
 
 	const setCookieHeaders = [];
 	const extraHeaders = {};
-	const bearer = request.headers.get("authorization");
+	const bearer = req.headers?.authorization;
 
 	const supabase = createServerClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
 		cookies: {
@@ -50,29 +51,37 @@ export function createSupabaseForRequest(request) {
 	return { supabase, setCookieHeaders, extraHeaders };
 }
 
-// Monta a Response anexando os Set-Cookie e os headers de no-cache que o
-// @supabase/ssr pede quando escreve cookie de sessao (evita CDN cachear sessao
-// de um usuario e servir pra outro).
-export function withCookies(body, init, setCookieHeaders, extraHeaders) {
-	const headers = new Headers(init?.headers);
-	for (const cookie of setCookieHeaders) headers.append("Set-Cookie", cookie);
+function applyCookiesAndHeaders(res, setCookieHeaders, extraHeaders) {
+	if (setCookieHeaders?.length) res.setHeader("Set-Cookie", setCookieHeaders);
 	if (extraHeaders) {
-		for (const [key, value] of Object.entries(extraHeaders)) headers.set(key, value);
+		for (const [key, value] of Object.entries(extraHeaders)) res.setHeader(key, value);
 	}
-	return new Response(body, { ...init, headers });
 }
 
-const ALLOWED_ORIGINS = new Set(
-	[
-		process.env.SITE_ORIGIN,
-		"https://flutu-conta.vercel.app",
-	].filter(Boolean)
-);
+// Responde com os Set-Cookie e os headers de no-cache que o @supabase/ssr pede
+// ao escrever cookie de sessao (evita CDN servir sessao de um usuario a outro).
+export function sendWithCookies(res, status, body, setCookieHeaders, extraHeaders) {
+	applyCookiesAndHeaders(res, setCookieHeaders, extraHeaders);
+	res.status(status);
+	if (body === null || body === undefined) {
+		res.end();
+		return;
+	}
+	res.json(body);
+}
 
-// CSRF: SameSite=Lax nao cobre todos os casos (ex.: navegacao top-level POST
-// em alguns browsers). Requests sem Origin (nativo, com Bearer) passam direto.
-export function isAllowedOrigin(request) {
-	const origin = request.headers.get("origin");
+export function redirectWithCookies(res, location, setCookieHeaders, extraHeaders) {
+	applyCookiesAndHeaders(res, setCookieHeaders, extraHeaders);
+	res.writeHead(302, { Location: location });
+	res.end();
+}
+
+const ALLOWED_ORIGINS = new Set([process.env.SITE_ORIGIN, "https://flutu-conta.vercel.app"].filter(Boolean));
+
+// CSRF: SameSite=Lax nao cobre todos os casos (ex.: navegacao top-level POST em
+// alguns browsers). Requests sem Origin (nativo, com Bearer) passam direto.
+export function isAllowedOrigin(req) {
+	const origin = req.headers?.origin;
 	if (!origin) return true;
 	if (ALLOWED_ORIGINS.has(origin)) return true;
 	return /^https:\/\/flutu-conta-[a-z0-9-]+\.vercel\.app$/.test(origin);
