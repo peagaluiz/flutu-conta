@@ -33,16 +33,17 @@ const TABLE_ALLOWLIST = {
 	transacoes: new Set(["GET", "POST", "PATCH", "DELETE"]),
 	recorrencias: new Set(["GET", "POST", "PATCH", "DELETE"]),
 	recorrencia_transacoes: new Set(["GET", "POST", "DELETE"]),
+	finance_recurrence_read_model: new Set(["GET"]),
 	familias: new Set(["GET", "POST", "PATCH", "DELETE"]),
 	familia_membros: new Set(["GET", "POST", "PATCH", "DELETE"]),
 	familia_convites: new Set(["GET", "POST", "PATCH", "DELETE"]),
 	profiles: new Set(["GET", "PATCH"]),
 };
 
-// deny-all por padrao: nenhuma funcao SECURITY DEFINER e exposta via
-// PostgREST hoje, e o unico rpc() do codigo (get_family_snapshot) nao existe
-// no banco (usa fallback). Adicionar nominalmente se/quando precisar.
-const RPC_ALLOWLIST = new Set([]);
+// deny-all por padrao: so libera nominalmente funcoes que existem no banco
+// e que o codigo realmente chama. get_family_snapshot e SECURITY INVOKER
+// (RLS de familia_membros/familias/familia_convites vale normal).
+const RPC_ALLOWLIST = new Set(["get_family_snapshot"]);
 
 const PREFER_ALLOWLIST = new Set([
 	"return=representation",
