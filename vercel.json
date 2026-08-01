@@ -4,7 +4,10 @@
   "framework": null,
   "cleanUrls": true,
   "trailingSlash": false,
-  "rewrites": [{ "source": "/:path*", "destination": "/" }],
+  "rewrites": [
+    { "source": "/db/rest/v1/(.*)", "destination": "/api/db?__path=$1" },
+    { "source": "/:path*", "destination": "/" }
+  ],
   "headers": [
     {
       "source": "/(.*)",
