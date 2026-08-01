@@ -144,17 +144,18 @@ async function updateTransacoesPessoaLink(params: {
 	);
 }
 
-async function getDefaultTipoImobilizadoId() {
-	if (!db) return null;
+async function getDefaultTipoImobilizadoId(userId: string | null) {
+	if (!db || !userId) return null;
 
 	const existing = await db.getFirstAsync<any>(
 		`
       SELECT id_tipo_imobilizado
       FROM tipo_imobilizado
-      WHERE deleted = 0
+      WHERE deleted = 0 AND user_id = ?
       ORDER BY id_tipo_imobilizado ASC
       LIMIT 1
-    `
+    `,
+		userId
 	);
 
 	if (existing?.id_tipo_imobilizado) return existing.id_tipo_imobilizado as number;
@@ -163,13 +164,15 @@ async function getDefaultTipoImobilizadoId() {
 		`
       INSERT INTO tipo_imobilizado (
         nome,
+        user_id,
         data_sync,
         sync_status,
         synced,
         deleted
-      ) VALUES (?, ?, 'pending', 0, 0)
+      ) VALUES (?, ?, ?, 'pending', 0, 0)
     `,
 		"Geral",
+		userId,
 		nowISO()
 	);
 
@@ -868,6 +871,7 @@ export function createManageRepository() {
 				const { data: tipos, error: tipoError } = await supabase
 					.from("tipo_imobilizado")
 					.select("id_tipo_imobilizado")
+					.eq("user_id", resolvedUserId)
 					.limit(1);
 
 				if (tipoError) throw tipoError.message;
@@ -876,7 +880,7 @@ export function createManageRepository() {
 				if (!tipoId) {
 					const { data: insertedTipo, error: insertedTipoError } = await supabase
 						.from("tipo_imobilizado")
-						.insert({ nome: "Geral" })
+						.insert({ nome: "Geral", user_id: resolvedUserId })
 						.select("id_tipo_imobilizado")
 						.single();
 
@@ -900,7 +904,7 @@ export function createManageRepository() {
 
 			if (!db) throw new Error("Banco local indisponivel");
 
-			const tipoId = await getDefaultTipoImobilizadoId();
+			const tipoId = await getDefaultTipoImobilizadoId(resolvedUserId);
 
 			await db.runAsync(
 				`

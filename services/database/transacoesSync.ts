@@ -178,6 +178,7 @@ function toPessoaPayload(row: any) {
 function toTipoImobilizadoPayload(row: any) {
 	return {
 		nome: row.nome ?? "",
+		user_id: row.user_id ?? null,
 	};
 }
 
@@ -473,6 +474,7 @@ async function upsertRemoteTipoImobilizadoLocally(remote: any) {
 
 		if (
 			String(existing?.nome || "") === String(remote?.nome || "") &&
+			String(existing?.user_id || "") === String(remote?.user_id || "") &&
 			String(existing?.sync_status || "") === "synced" &&
 			Number(existing?.synced || 0) === 1
 		) {
@@ -483,6 +485,7 @@ async function upsertRemoteTipoImobilizadoLocally(remote: any) {
 			`
         UPDATE tipo_imobilizado
         SET nome = COALESCE(?, nome),
+            user_id = COALESCE(?, user_id),
             data_sync = ?,
             sync_status = 'synced',
             synced = 1,
@@ -490,6 +493,7 @@ async function upsertRemoteTipoImobilizadoLocally(remote: any) {
         WHERE id_tipo_imobilizado = ?
       `,
 			remote.nome ?? null,
+			remote.user_id ?? null,
 			nowISO(),
 			existing.id_tipo_imobilizado
 		);
@@ -510,14 +514,16 @@ async function upsertRemoteTipoImobilizadoLocally(remote: any) {
       INSERT INTO tipo_imobilizado (
         remote_id,
         nome,
+        user_id,
         data_sync,
         sync_status,
         synced,
         deleted
-      ) VALUES (?, ?, ?, 'synced', 1, 0)
+      ) VALUES (?, ?, ?, ?, 'synced', 1, 0)
     `,
 		remote.id_tipo_imobilizado,
 		remote.nome ?? "",
+		remote.user_id ?? null,
 		nowISO()
 	);
 

@@ -44,6 +44,7 @@ export async function initializeSQLite(database: SQLiteDatabase) {
 			id_tipo_imobilizado INTEGER PRIMARY KEY AUTOINCREMENT,
 			remote_id           INTEGER,
 			nome                TEXT NOT NULL,
+			user_id             TEXT,
 			created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 			updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 			data_sync           TEXT,
@@ -258,6 +259,7 @@ export async function initializeSQLite(database: SQLiteDatabase) {
 
 	await safeAddColumn("ALTER TABLE tipo_imobilizado ADD COLUMN created_at TEXT;");
 	await safeAddColumn("ALTER TABLE tipo_imobilizado ADD COLUMN updated_at TEXT;");
+	await safeAddColumn("ALTER TABLE tipo_imobilizado ADD COLUMN user_id TEXT;");
 
 	await safeAddColumn("ALTER TABLE recorrencias ADD COLUMN remote_id INTEGER;");
 	await safeAddColumn("ALTER TABLE recorrencias ADD COLUMN skip_non_working INTEGER DEFAULT 0;");

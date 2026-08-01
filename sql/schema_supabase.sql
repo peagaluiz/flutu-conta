@@ -190,6 +190,7 @@ CREATE TABLE IF NOT EXISTS public.pessoa (
 CREATE TABLE IF NOT EXISTS public.tipo_imobilizado (
     id_tipo_imobilizado BIGSERIAL PRIMARY KEY,
     nome                TEXT    NOT NULL,
+    user_id             UUID    NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted             INTEGER NOT NULL DEFAULT 0
@@ -524,6 +525,9 @@ CREATE INDEX IF NOT EXISTS idx_familia_convites_email  ON public.familia_convite
 CREATE INDEX IF NOT EXISTS idx_pessoa_user             ON public.pessoa(user_id);
 CREATE INDEX IF NOT EXISTS idx_pessoa_family           ON public.pessoa(family_id, is_family_shared);
 CREATE INDEX IF NOT EXISTS idx_pessoa_deleted          ON public.pessoa(deleted);
+
+-- tipo_imobilizado
+CREATE INDEX IF NOT EXISTS idx_tipo_imobilizado_user   ON public.tipo_imobilizado(user_id);
 
 -- imobilizado
 CREATE INDEX IF NOT EXISTS idx_imobilizado_user        ON public.imobilizado(user_id);
@@ -866,15 +870,20 @@ CREATE POLICY "pessoa_delete" ON public.pessoa FOR DELETE
 DROP POLICY IF EXISTS "tipo_imobilizado_select" ON public.tipo_imobilizado;
 DROP POLICY IF EXISTS "tipo_imobilizado_insert" ON public.tipo_imobilizado;
 DROP POLICY IF EXISTS "tipo_imobilizado_update" ON public.tipo_imobilizado;
+DROP POLICY IF EXISTS "tipo_imobilizado_delete" ON public.tipo_imobilizado;
 
-CREATE POLICY "tipo_imobilizado_select" ON public.tipo_imobilizado FOR SELECT
-    USING (true);
+CREATE POLICY "tipo_imobilizado_select" ON public.tipo_imobilizado FOR SELECT TO authenticated
+    USING (user_id = auth.uid());
 
-CREATE POLICY "tipo_imobilizado_insert" ON public.tipo_imobilizado FOR INSERT
-    WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY "tipo_imobilizado_insert" ON public.tipo_imobilizado FOR INSERT TO authenticated
+    WITH CHECK (user_id = auth.uid());
 
-CREATE POLICY "tipo_imobilizado_update" ON public.tipo_imobilizado FOR UPDATE
-    USING (auth.role() = 'authenticated');
+CREATE POLICY "tipo_imobilizado_update" ON public.tipo_imobilizado FOR UPDATE TO authenticated
+    USING (user_id = auth.uid())
+    WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "tipo_imobilizado_delete" ON public.tipo_imobilizado FOR DELETE TO authenticated
+    USING (user_id = auth.uid());
 
 -- ─── imobilizado ──────────────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "imobilizado_select" ON public.imobilizado;
