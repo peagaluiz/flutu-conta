@@ -41,5 +41,14 @@ export default async function handler(req, res) {
 		return;
 	}
 
-	res.status(200).json({ signedUrl: data.signedUrl, token: data.token, path: data.path });
+	// publicUrl calculado aqui pq o client web nao tem mais a URL real do
+	// Supabase (aponta pro proxy /db) - so o servidor sabe o host de verdade.
+	const { data: publicUrlData } = supabase.storage.from("avatars").getPublicUrl(data.path);
+
+	res.status(200).json({
+		signedUrl: data.signedUrl,
+		token: data.token,
+		path: data.path,
+		publicUrl: publicUrlData.publicUrl,
+	});
 }

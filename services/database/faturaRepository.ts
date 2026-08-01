@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 import { supabase } from "@/services/supabase/client";
 import { db, nowISO } from "@/services/database/db";
+import { getCurrentUserCache } from "@/services/auth/currentUserCache";
 
 type VisibilityScope = "mine" | "family" | "all";
 
@@ -33,6 +34,15 @@ async function resolveVisibilityContext(params?: VisibilityParams) {
 			familyId: params.familyId ?? null,
 		};
 	}
+	if (Platform.OS === "web") {
+		const cached = getCurrentUserCache();
+		return {
+			scope: params?.visibilityScope ?? "all",
+			userId: cached.id,
+			familyId: cached.familyId,
+		};
+	}
+
 	const { data } = await supabase.auth.getSession();
 	const user = data?.session?.user;
 	const metadataFamilyId = Number(

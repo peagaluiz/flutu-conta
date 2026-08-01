@@ -1,6 +1,9 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from "expo-router";
+import { Platform } from "react-native";
 import { supabase } from "@/services/supabase/client";
+import { apiFetch, resetApiFetchRedirectGuard } from "@/services/http/apiFetch";
+import { setCurrentUserCache } from "@/services/auth/currentUserCache";
 import {
     establishRecoverySessionFromUrl as establishRecoverySessionFromUrlService,
     requestPasswordReset as requestPasswordResetService,
@@ -90,22 +93,45 @@ type AuthState = {
 
 export const AuthContext = createContext<AuthState>({} as AuthState);
 
-function mapSessionToUser(session: Session | null): User | null {
-    if (!session?.user) return null;
+function mapAuthUser(authUser: { id: string; email?: string | null; user_metadata?: Record<string, unknown> } | null | undefined): User | null {
+    if (!authUser) return null;
 
     return {
-        id: session.user.id,
-        email: session.user.email ?? null,
+        id: authUser.id,
+        email: authUser.email ?? null,
         nome:
-            (session.user.user_metadata?.display_name as string | undefined) ??
-            (session.user.user_metadata?.nome as string | undefined) ??
+            (authUser.user_metadata?.display_name as string | undefined) ??
+            (authUser.user_metadata?.nome as string | undefined) ??
             null,
         avatarUrl:
-            (session.user.user_metadata?.avatar_url as string | undefined) ??
-            (session.user.user_metadata?.picture as string | undefined) ??
-            (session.user.user_metadata?.photo_url as string | undefined) ??
+            (authUser.user_metadata?.avatar_url as string | undefined) ??
+            (authUser.user_metadata?.picture as string | undefined) ??
+            (authUser.user_metadata?.photo_url as string | undefined) ??
             null,
     };
+}
+
+function mapSessionToUser(session: Session | null): User | null {
+    return mapAuthUser(session?.user ?? null);
+}
+
+function base64ToBytes(base64Data: string): Uint8Array {
+    const binaryString = atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+}
+
+// Web: /auth/me revalida no servidor (getUser(), nunca getSession()) -
+// suppressAuthRedirect pq um 401 aqui e o caso normal de "nao logado", nao
+// uma sessao expirando no meio do uso.
+async function fetchWebUser(): Promise<User | null> {
+    const res = await apiFetch("/api/auth/me", { suppressAuthRedirect: true });
+    if (!res.ok) return null;
+    const body = await res.json();
+    return mapAuthUser(body.user);
 }
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -190,6 +216,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
 
     async function authenticateAndSetSession(data: LoginPayload) {
+        if (Platform.OS === "web") {
+            // suppressAuthRedirect: um 401 aqui e "senha errada", nao sessao
+            // expirando - nao queremos o redirect automatico do apiFetch.
+            const res = await apiFetch("/api/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email: data.email, senha: data.senha }),
+                suppressAuthRedirect: true,
+            });
+
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body?.error || "Falha ao autenticar");
+            }
+
+            resetApiFetchRedirectGuard();
+            setUser(await fetchWebUser());
+            setIsLoggedIn(true);
+            setIsReady(true);
+
+            router.replace("/");
+            return true;
+        }
+
         const { data: authData, error } = await supabase.auth.signInWithPassword({
             email: data.email,
             password: data.senha,
@@ -232,7 +282,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
 
     async function logOut() {
-        await supabase.auth.signOut();
+        if (Platform.OS === "web") {
+            await apiFetch("/api/auth/logout", {
+                method: "POST",
+                suppressAuthRedirect: true,
+            }).catch(() => {});
+        } else {
+            await supabase.auth.signOut();
+        }
+
+        resetApiFetchRedirectGuard();
         clearReadCache();
         setUser(null);
         setFamily(null);
@@ -247,6 +306,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     async function updateUserProfile(nome: string) {
         if (!user) throw new Error("Usuário não autenticado");
+
+        if (Platform.OS === "web") {
+            const res = await apiFetch("/api/auth/update-user", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ data: { display_name: nome } }),
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body?.error || "Falha ao atualizar perfil");
+            }
+            setUser((prev) => (prev ? { ...prev, nome } : null));
+            return;
+        }
 
         const { error } = await supabase.auth.updateUser({
             data: { display_name: nome },
@@ -263,18 +336,53 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (!user) throw new Error("Usuário não autenticado");
 
         const ext = mimeType === "image/png" ? "png" : "jpg";
-        const fileName = `${user.id}.${ext}`;
 
-        // base64 → Uint8Array (sem fetch de URI local, que falha no React Native)
-        const binaryString = atob(base64Data);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
+        if (Platform.OS === "web") {
+            // Storage NAO passa pelo proxy /db (limite de 4.5MB de payload da
+            // Vercel) - upload direto do browser via signed upload URL.
+            const signRes = await apiFetch("/api/avatar/sign-upload", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ext }),
+            });
+            if (!signRes.ok) {
+                const body = await signRes.json().catch(() => ({}));
+                throw new Error(body?.error || "Falha ao preparar upload");
+            }
+            const { signedUrl, publicUrl } = await signRes.json();
+
+            const uploadRes = await fetch(signedUrl, {
+                method: "PUT",
+                headers: {
+                    "x-upsert": "true",
+                    "cache-control": "max-age=3600",
+                    "content-type": mimeType,
+                },
+                body: base64ToBytes(base64Data) as BodyInit,
+            });
+            if (!uploadRes.ok) throw new Error("Falha ao enviar imagem");
+
+            const avatarUrl = `${publicUrl}?t=${Date.now()}`;
+
+            const res = await apiFetch("/api/auth/update-user", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ data: { avatar_url: avatarUrl } }),
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body?.error || "Falha ao salvar avatar");
+            }
+
+            setUser((prev) => (prev ? { ...prev, avatarUrl } : null));
+            return;
         }
+
+        const fileName = `${user.id}.${ext}`;
 
         const { error: uploadError } = await supabase.storage
             .from("avatars")
-            .upload(fileName, bytes, { upsert: true, contentType: mimeType });
+            .upload(fileName, base64ToBytes(base64Data), { upsert: true, contentType: mimeType });
 
         if (uploadError) throw new Error(uploadError.message);
 
@@ -297,6 +405,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     async function removeUserAvatar() {
         if (!user) throw new Error("Usuário não autenticado");
+
+        if (Platform.OS === "web") {
+            await apiFetch("/api/avatar/remove", { method: "POST" }).catch(() => {});
+
+            const res = await apiFetch("/api/auth/update-user", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ data: { avatar_url: null } }),
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body?.error || "Falha ao remover avatar");
+            }
+
+            setUser((prev) => (prev ? { ...prev, avatarUrl: null } : null));
+            return;
+        }
 
         const extensions = ["jpg", "jpeg", "png", "webp"];
         await Promise.allSettled(
@@ -378,6 +503,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
 
     useEffect(() => {
+        // Web: sem onAuthStateChange (persistSession:false -> nao ha sessao
+        // local pra observar; a fonte da verdade e /auth/me + os cookies).
+        // Registrar o listener aqui causaria um SIGNED_OUT espurio.
+        if (Platform.OS === "web") {
+            (async () => {
+                try {
+                    const me = await fetchWebUser();
+                    if (me) {
+                        setUser(me);
+                        setIsLoggedIn(true);
+                    } else {
+                        setIsLoggedIn(false);
+                        setFamilyReady(true);
+                    }
+                } catch {
+                    setIsLoggedIn(false);
+                    setFamilyReady(true);
+                } finally {
+                    setIsReady(true);
+                }
+            })();
+            return;
+        }
+
         async function init() {
             const { data, error } = await supabase.auth.getSession();
             if (error) {
@@ -419,6 +568,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             subscription.unsubscribe();
         };
     }, []);
+
+    useEffect(() => {
+        setCurrentUserCache(user);
+    }, [user]);
 
     useEffect(() => {
         if (!isLoggedIn) return;

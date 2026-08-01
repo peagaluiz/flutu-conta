@@ -2,6 +2,7 @@ import { Platform } from "react-native";
 import { supabase } from "@/services/supabase/client";
 import { db, nowISO } from "@/services/database/db";
 import { ImobilizadoRow, TransacaoDatabase } from "@/services/database/types";
+import { getCurrentUserCache } from "@/services/auth/currentUserCache";
 import {
 	activateRecorrencia,
 	applyEditToRecurrenceTransacoes,
@@ -43,6 +44,15 @@ async function resolveVisibilityContext(params?: {
 			scope: params.visibilityScope ?? "all",
 			userId: params.userId,
 			familyId: params.familyId ?? null,
+		};
+	}
+
+	if (Platform.OS === "web") {
+		const cached = getCurrentUserCache();
+		return {
+			scope: params?.visibilityScope ?? "all",
+			userId: cached.id,
+			familyId: cached.familyId,
 		};
 	}
 

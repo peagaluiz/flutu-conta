@@ -1,4 +1,6 @@
+import { Platform } from "react-native";
 import { supabase } from "@/services/supabase/client";
+import { getCurrentUserCache } from "@/services/auth/currentUserCache";
 
 export type FamilyRole = "owner" | "member";
 
@@ -324,13 +326,16 @@ export async function leaveFamily(snapshot: FamilySnapshot) {
 }
 
 export async function getPendingInviteForCurrentUser(): Promise<PendingInvite | null> {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user?.email) return null;
+    const email =
+        Platform.OS === "web"
+            ? getCurrentUserCache().email
+            : (await supabase.auth.getUser()).data.user?.email ?? null;
+    if (!email) return null;
 
     const { data } = await supabase
         .from("familia_convites")
         .select("id, family_id, invited_by_user_id, created_at")
-        .eq("email", user.email)
+        .eq("email", email)
         .eq("status", "pending")
         .order("created_at", { ascending: false })
         .limit(1)

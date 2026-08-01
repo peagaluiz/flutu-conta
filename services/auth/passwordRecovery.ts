@@ -1,6 +1,7 @@
 import * as Linking from "expo-linking";
 import { Platform } from "react-native";
 import { supabase } from "@/services/supabase/client";
+import { apiFetch } from "@/services/http/apiFetch";
 
 export const PASSWORD_RESET_SUCCESS_MESSAGE =
     "Se o e-mail estiver cadastrado, voce recebera um link para redefinir a senha.";
@@ -50,6 +51,19 @@ function buildPasswordResetRedirectUrl(): string {
 }
 
 export async function requestPasswordReset(email: string): Promise<void> {
+    if (Platform.OS === "web") {
+        const res = await apiFetch("/api/auth/reset-password", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: email.trim() }),
+        });
+        if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw new Error(body?.error || "Falha ao enviar e-mail de recuperacao");
+        }
+        return;
+    }
+
     const redirectTo = buildPasswordResetRedirectUrl();
 
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
@@ -59,6 +73,14 @@ export async function requestPasswordReset(email: string): Promise<void> {
     if (error) {
         throw new Error(error.message || "Falha ao enviar e-mail de recuperacao");
     }
+}
+
+// Web: PKCE ja trocou o code e setou o cookie httpOnly no /api/auth/callback
+// ANTES do usuario cair em /nova-senha - so resta confirmar que a sessao
+// existe (nao ha token nenhum pra parsear da URL, diferente do nativo).
+export async function hasActiveWebSession(): Promise<boolean> {
+    const res = await apiFetch("/api/auth/me", { suppressAuthRedirect: true });
+    return res.ok;
 }
 
 export async function establishRecoverySessionFromUrl(url: string): Promise<void> {
@@ -90,6 +112,19 @@ export async function establishRecoverySessionFromUrl(url: string): Promise<void
 }
 
 export async function updatePassword(newPassword: string): Promise<void> {
+    if (Platform.OS === "web") {
+        const res = await apiFetch("/api/auth/update-user", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ password: newPassword }),
+        });
+        if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw new Error(body?.error || "Falha ao atualizar senha");
+        }
+        return;
+    }
+
     const { error } = await supabase.auth.updateUser({
         password: newPassword,
     });

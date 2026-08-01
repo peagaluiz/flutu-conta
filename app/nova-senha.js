@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "expo-router";
+import { Platform } from "react-native";
 import { Controller, useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
@@ -16,7 +17,7 @@ import { useErrorToast } from "@/components/ui/toast/useErrorToast";
 import { useAuth } from "@/state/AuthContext";
 import { useTheme } from "@/components/ui/gluestack-ui-provider/ThemeProvider/ThemeProvider";
 import { getThemeColors } from "@/constants/colors";
-import { isLikelyNetworkError } from "@/services/auth/passwordRecovery";
+import { hasActiveWebSession, isLikelyNetworkError } from "@/services/auth/passwordRecovery";
 import { isAbortError, withAbort } from "@/utils/abortable";
 import { supabase } from "@/services/supabase/client";
 
@@ -34,7 +35,7 @@ const schema = yup.object({
 export default function NovaSenhaScreen() {
 	const router = useRouter();
 	const { showNewToast } = useErrorToast();
-	const { establishRecoverySessionFromUrl, updatePassword } = useAuth();
+	const { establishRecoverySessionFromUrl, updatePassword, logOut } = useAuth();
 	const { theme } = useTheme();
 	const colors = getThemeColors(theme);
 	const isDarkMode = theme === "dark";
@@ -83,22 +84,33 @@ export default function NovaSenhaScreen() {
 			prepareAbortRef.current = new AbortController();
 
 			try {
-				const initialUrl = await withAbort(
-					Linking.getInitialURL(),
-					prepareAbortRef.current.signal
-				);
-
-				if (initialUrl) {
-					await activateRecoverySession(
-						initialUrl,
+				if (Platform.OS === "web") {
+					// PKCE: /api/auth/callback ja trocou o code e setou o
+					// cookie httpOnly ANTES do usuario cair aqui - nao ha
+					// token nenhum pra parsear da URL, so confirmar a sessao.
+					const hasSession = await withAbort(
+						hasActiveWebSession(),
 						prepareAbortRef.current.signal
 					);
+					setIsLinkValid(hasSession);
 				} else {
-					const { data } = await withAbort(
-						supabase.auth.getSession(),
+					const initialUrl = await withAbort(
+						Linking.getInitialURL(),
 						prepareAbortRef.current.signal
 					);
-					setIsLinkValid(Boolean(data.session));
+
+					if (initialUrl) {
+						await activateRecoverySession(
+							initialUrl,
+							prepareAbortRef.current.signal
+						);
+					} else {
+						const { data } = await withAbort(
+							supabase.auth.getSession(),
+							prepareAbortRef.current.signal
+						);
+						setIsLinkValid(Boolean(data.session));
+					}
 				}
 			} catch (error) {
 				if (!isAbortError(error) && mountedRef.current) {
@@ -114,16 +126,18 @@ export default function NovaSenhaScreen() {
 
 		prepareRecovery();
 
-		subscription = Linking.addEventListener("url", async ({ url }) => {
-			if (!url) return;
-			prepareAbortRef.current?.abort?.();
-			prepareAbortRef.current = new AbortController();
-			await activateRecoverySession(url, prepareAbortRef.current.signal);
-			prepareAbortRef.current = null;
-			if (mountedRef.current) {
-				setIsPreparing(false);
-			}
-		});
+		if (Platform.OS !== "web") {
+			subscription = Linking.addEventListener("url", async ({ url }) => {
+				if (!url) return;
+				prepareAbortRef.current?.abort?.();
+				prepareAbortRef.current = new AbortController();
+				await activateRecoverySession(url, prepareAbortRef.current.signal);
+				prepareAbortRef.current = null;
+				if (mountedRef.current) {
+					setIsPreparing(false);
+				}
+			});
+		}
 
 		return () => {
 			mountedRef.current = false;
@@ -147,10 +161,7 @@ export default function NovaSenhaScreen() {
 
 		try {
 			await withAbort(updatePassword(senha), saveAbortRef.current.signal);
-			await withAbort(
-				supabase.auth.signOut(),
-				saveAbortRef.current.signal
-			);
+			await withAbort(logOut(), saveAbortRef.current.signal);
 
 			if (!mountedRef.current) return;
 
@@ -159,7 +170,6 @@ export default function NovaSenhaScreen() {
 				"Senha atualizada com sucesso. Faca login novamente.",
 				"Sucesso"
 			);
-			router.replace("/login");
 		} catch (error) {
 			if (!mountedRef.current || isAbortError(error)) return;
 

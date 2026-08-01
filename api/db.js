@@ -110,7 +110,15 @@ export default async function handler(req, res) {
 	if (first === "rpc") {
 		const fnName = rest.join("/");
 		if (!RPC_ALLOWLIST.has(fnName)) {
-			res.status(403).json({ error: "rpc_not_allowed" });
+			// Formato identico ao erro real do PostgREST pra funcao inexistente
+			// (PGRST202) - o client (familyRepository.ts) ja trata esse codigo
+			// especificamente como "cair no fallback", entao negar por aqui e
+			// indistinguivel de "nao implementado", sem precisar de nenhuma
+			// mudanca no codigo que consome isso.
+			res.status(404).json({
+				code: "PGRST202",
+				message: `Could not find the function public.${fnName}`,
+			});
 			return;
 		}
 	} else {
