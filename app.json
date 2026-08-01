@@ -30,7 +30,7 @@
       "bundler": "metro"
     },
     "plugins": [
-      "expo-router",
+      ["expo-router", { "origin": "https://flutu-conta.vercel.app" }],
       "expo-secure-store",
       ["expo-notifications", {}]
     ],

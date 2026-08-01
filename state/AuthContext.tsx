@@ -530,24 +530,51 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         async function init() {
             const { data, error } = await supabase.auth.getSession();
             if (error) {
+                setIsLoggedIn(false);
+                setFamilyReady(true);
                 setIsReady(true);
                 return;
             }
 
-            const currentUser = mapSessionToUser(data.session);
-            if (currentUser) {
-                setUser(currentUser);
-                setIsLoggedIn(true);
-            } else {
+            const localUser = mapSessionToUser(data.session);
+            if (!localUser) {
                 setFamilyReady(true);
+                setIsReady(true);
+                return;
             }
 
+            // getSession() so le o storage local - revalida no servidor antes
+            // de marcar como logado (senao um token expirado/revogado ainda
+            // renderiza a tela autenticada por uma fracao de segundo).
+            const { data: userData, error: userError } = await supabase.auth.getUser();
+
+            if (userError && userError.name !== "AuthRetryableFetchError") {
+                // Erro de verdade do servidor (token invalido/revogado) - so
+                // aqui desloga. AuthRetryableFetchError e falha de rede: o
+                // app e offline-first, entao cai no fallback do usuario local
+                // em vez de expulsar quem simplesmente esta sem internet.
+                await supabase.auth.signOut().catch(() => {});
+                setUser(null);
+                setIsLoggedIn(false);
+                setFamilyReady(true);
+                setIsReady(true);
+                return;
+            }
+
+            setUser(userData?.user ? mapAuthUser(userData.user) : localUser);
+            setIsLoggedIn(true);
             setIsReady(true);
         }
 
         const {
             data: { subscription },
-        } = supabase.auth.onAuthStateChange((_event, session) => {
+        } = supabase.auth.onAuthStateChange((event, session) => {
+            // INITIAL_SESSION e tratado por init() (com revalidacao via
+            // getUser()) - aqui so reage a mudancas reais depois que o app ja
+            // esta rodando, senao a sessao local (nao revalidada) vence a
+            // corrida contra o init() e pisca tela autenticada indevidamente.
+            if (event === "INITIAL_SESSION") return;
+
             const nextUser = mapSessionToUser(session);
             setUser((prev) => {
                 if (!nextUser) return null;
