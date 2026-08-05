@@ -17,6 +17,9 @@ import { ALL_PAGE_SIZE, PageSizeSelect } from "./PageSizeSelect";
 // seleção múltipla (linha + página) e paginação client-side.
 // Colunas: { key, label, width?|flex?, align?, sortable?, sortValue?(item), render(item) }
 
+const CHECKBOX_COL_WIDTH = 44;
+const BULK_BUTTON_WIDTH = 56;
+
 function cellStyle(col) {
 	return {
 		...(col.width != null ? { width: col.width } : { flex: col.flex ?? 1, minWidth: 0 }),
@@ -83,27 +86,34 @@ function PageButton({ icon: Icon, disabled, colors, onPress }) {
 	);
 }
 
+// Sem seleção o botão fica desabilitado (não some) e o contador é omitido, para a
+// largura da coluna de seleção não oscilar entre os estados.
 function BulkActionsButton({ count, colors, onPress }) {
+	const disabled = count === 0;
 	return (
 		<Pressable
-			onPress={onPress}
+			onPress={disabled ? undefined : onPress}
 			hitSlop={4}
+			accessibilityLabel="Ações em massa"
 			style={({ hovered }) => ({
 				flexDirection: "row",
 				alignItems: "center",
-				gap: 5,
+				gap: 4,
 				height: 26,
-				paddingHorizontal: 8,
+				paddingHorizontal: 7,
 				borderRadius: 8,
 				borderWidth: 1,
-				borderColor: colors.brand,
-				backgroundColor: hovered ? colors.surface : "transparent",
+				borderColor: disabled ? colors.border : colors.brand,
+				backgroundColor: hovered && !disabled ? colors.surface : "transparent",
+				opacity: disabled ? 0.45 : 1,
 			})}
 		>
-			<ListChecks size={14} color={colors.brand} />
-			<Text className="text-xs font-semibold" style={{ color: colors.brand }}>
-				{count}
-			</Text>
+			<ListChecks size={14} color={disabled ? colors.textSecondary : colors.brand} />
+			{disabled ? null : (
+				<Text className="text-xs font-semibold" style={{ color: colors.brand }}>
+					{count}
+				</Text>
+			)}
 		</Pressable>
 	);
 }
@@ -125,6 +135,7 @@ export function DataTable({
 	onTogglePage,
 	onOpenBulkActions,
 	expandable = false,
+	isRowExpandable,
 	renderExpanded,
 	highlightId,
 	onEndReached,
@@ -209,27 +220,29 @@ export function DataTable({
 		if (selectionActive) setExpandedId(null);
 	}, [selectionActive]);
 
-	const showBulkButton = selectionActive && !!onOpenBulkActions;
-	const showToolbar = pageSizeControl || showBulkButton;
+	const showBulkButton = selectable && !!onOpenBulkActions;
+	const selectColWidth =
+		CHECKBOX_COL_WIDTH + (showBulkButton ? BULK_BUTTON_WIDTH : 0);
 
 	const handleRowPress = useCallback(
-		(item, id, rowSelectable) => {
+		(item, id, rowSelectable, rowExpandable) => {
 			if (selectionActive) {
 				if (rowSelectable) onToggleRow?.(item);
 				return;
 			}
-			if (expandable) setExpandedId((prev) => (String(prev) === String(id) ? null : id));
+			if (rowExpandable) setExpandedId((prev) => (String(prev) === String(id) ? null : id));
 		},
-		[selectionActive, expandable, onToggleRow]
+		[selectionActive, onToggleRow]
 	);
 
 	return (
 		<View style={{ width: "100%" }}>
-			{showToolbar ? (
+			{pageSizeControl ? (
 				<View
 					style={{
 						flexDirection: "row",
 						alignItems: "center",
+						justifyContent: "flex-end",
 						gap: 10,
 						paddingHorizontal: 16,
 						paddingVertical: 10,
@@ -240,22 +253,12 @@ export function DataTable({
 					<Text className="text-xs" style={{ color: colors.textSecondary }}>
 						{total} resultado{total === 1 ? "" : "s"}
 					</Text>
-					{showBulkButton ? (
-						<BulkActionsButton
-							count={selectedIds.size}
-							colors={colors}
-							onPress={onOpenBulkActions}
-						/>
-					) : null}
-					<View style={{ flex: 1 }} />
-					{pageSizeControl ? (
-						<PageSizeSelect
-							value={pageSizeChoice}
-							options={pageSizeOptions}
-							colors={colors}
-							onChange={setPageSizeChoice}
-						/>
-					) : null}
+					<PageSizeSelect
+						value={pageSizeChoice}
+						options={pageSizeOptions}
+						colors={colors}
+						onChange={setPageSizeChoice}
+					/>
 				</View>
 			) : null}
 
@@ -271,14 +274,27 @@ export function DataTable({
 				}}
 			>
 				{selectable ? (
-					<View style={{ width: 44, alignItems: "center", justifyContent: "center" }}>
-						<Checkbox
-							checked={allPageSelected}
-							indeterminate={!allPageSelected && selectedOnPage > 0}
-							disabled={selectablePageRows.length === 0}
-							colors={colors}
-							onPress={() => onTogglePage?.(selectablePageRows, !allPageSelected)}
-						/>
+					<View
+						style={{ width: selectColWidth, flexDirection: "row", alignItems: "center" }}
+					>
+						<View style={{ width: CHECKBOX_COL_WIDTH, alignItems: "center" }}>
+							<Checkbox
+								checked={allPageSelected}
+								indeterminate={!allPageSelected && selectedOnPage > 0}
+								disabled={selectablePageRows.length === 0}
+								colors={colors}
+								onPress={() => onTogglePage?.(selectablePageRows, !allPageSelected)}
+							/>
+						</View>
+						{showBulkButton ? (
+							<View style={{ width: BULK_BUTTON_WIDTH, alignItems: "flex-start" }}>
+								<BulkActionsButton
+									count={selectedIds?.size ?? 0}
+									colors={colors}
+									onPress={onOpenBulkActions}
+								/>
+							</View>
+						) : null}
 					</View>
 				) : null}
 				{columns.map((col) => {
@@ -348,12 +364,14 @@ export function DataTable({
 					const isSelected = selectable && !!selectedIds?.has(id);
 					const isHighlighted =
 						highlightId != null && String(highlightId) === String(id);
-					const isExpanded = expandable && String(expandedId) === String(id);
+					const rowExpandable =
+						expandable && (isRowExpandable ? isRowExpandable(item) : true);
+					const isExpanded = rowExpandable && String(expandedId) === String(id);
 					return (
 						<React.Fragment key={String(id)}>
 							<Pressable
-								disabled={!(rowSelectable && selectionActive) && !expandable}
-								onPress={() => handleRowPress(item, id, rowSelectable)}
+								disabled={!(rowSelectable && selectionActive) && !rowExpandable}
+								onPress={() => handleRowPress(item, id, rowSelectable, rowExpandable)}
 								style={({ hovered }) => ({
 									flexDirection: "row",
 									alignItems: "center",
@@ -369,14 +387,16 @@ export function DataTable({
 							>
 								{selectable ? (
 									<View
-										style={{ width: 44, alignItems: "center", justifyContent: "center" }}
+										style={{ width: selectColWidth, flexDirection: "row", alignItems: "center" }}
 									>
-										<Checkbox
-											checked={isSelected}
-											disabled={!rowSelectable}
-											colors={colors}
-											onPress={() => onToggleRow?.(item)}
-										/>
+										<View style={{ width: CHECKBOX_COL_WIDTH, alignItems: "center" }}>
+											<Checkbox
+												checked={isSelected}
+												disabled={!rowSelectable}
+												colors={colors}
+												onPress={() => onToggleRow?.(item)}
+											/>
+										</View>
 									</View>
 								) : null}
 								{columns.map((col) => (

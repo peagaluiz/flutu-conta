@@ -12,7 +12,7 @@ import { DataTable } from "@/components/ui/data-table";
 import { Box } from "@/components/ui/box";
 import { AnimatedHeight } from "@/components/ui/AnimatedHeight";
 
-import { getDescricao } from "@/utils/finance/getDescricao";
+import { getDescricao, getDetalhes } from "@/utils/finance/getDescricao";
 import { getSectionConfig } from "@/utils/auth/launches/sections";
 import { invalidateRecurrenceReadModel } from "@/services/database/recurrenceWeb";
 
@@ -27,7 +27,7 @@ import { getLaunchesWebColumns } from "./launchesWebColumns";
 import { getRecorrenciasWebColumns } from "./recorrenciasWebColumns";
 import { QuickFilterBar } from "./QuickFilterBar";
 import { TableSkeleton } from "./TableSkeleton";
-import { ExpandedObservacao } from "./ExpandedObservacao";
+import { ExpandedDetails } from "./ExpandedDetails";
 import { LaunchesWebActionModals } from "./LaunchesWebActionModals";
 import { useRecorrenciasWeb } from "./useRecorrenciasWeb";
 
@@ -175,8 +175,18 @@ export default function LaunchesWebScreen() {
         [selection.selectedIds, selection.handleToggleSelect]
     );
 
+    const isRowExpandable = useCallback((item) => {
+        const { descricao, observacao } = getDetalhes(item);
+        return !!(descricao || observacao);
+    }, []);
+
     const renderExpandedRow = useCallback(
-        (item) => <ExpandedObservacao text={getDescricao(item)} colors={colors} />,
+        (item) => {
+            const { descricao, observacao } = getDetalhes(item);
+            return (
+                <ExpandedDetails descricao={descricao} observacao={observacao} colors={colors} />
+            );
+        },
         [colors]
     );
 
@@ -289,6 +299,7 @@ export default function LaunchesWebScreen() {
                                             : undefined
                                     }
                                     expandable={section === "transacoes"}
+                                    isRowExpandable={isRowExpandable}
                                     renderExpanded={renderExpandedRow}
                                     highlightId={section === "transacoes" ? localHighlightId : null}
                                     onEndReached={handleLoadMore}

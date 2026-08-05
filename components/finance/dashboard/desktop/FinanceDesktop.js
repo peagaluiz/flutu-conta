@@ -8,6 +8,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useTheme } from "@/components/ui/gluestack-ui-provider/ThemeProvider/ThemeProvider";
 import { getThemeColors } from "@/constants/colors";
 import { useOpenInsert } from "@/hooks/useOpenInsert";
+import { Alert } from "@/utils/alert";
+import { downloadTextFile } from "@/utils/downloadFile";
+import { buildFinanceReportHtml } from "@/utils/finance/financeReportHtml";
 import { useFinanceDesktop } from "./useFinanceDesktop";
 import { MonthBlock } from "./MonthBlock";
 import { YearBlock } from "./YearBlock";
@@ -21,7 +24,7 @@ function FinanceDesktopSkeleton() {
 	);
 }
 
-function PageHeader({ colors }) {
+function PageHeader({ colors, onExport, disabled }) {
 	return (
 		<Box className="flex-row items-center justify-between gap-4 flex-wrap">
 			<Box className="flex-row items-center gap-3">
@@ -34,10 +37,20 @@ function PageHeader({ colors }) {
 					</Text>
 				</Box>
 			</Box>
-			<Pressable accessibilityLabel="Exportar">
+			<Pressable
+				accessibilityLabel="Exportar relatório em HTML"
+				disabled={disabled}
+				onPress={onExport}
+			>
 				<Box
 					className="rounded-full border items-center justify-center"
-					style={{ width: 40, height: 40, backgroundColor: colors.surfaceMuted, borderColor: colors.border }}
+					style={{
+						width: 40,
+						height: 40,
+						backgroundColor: colors.surfaceMuted,
+						borderColor: colors.border,
+						opacity: disabled ? 0.4 : 1,
+					}}
 				>
 					<Download size={17} color={colors.textPrimary} />
 				</Box>
@@ -73,13 +86,40 @@ export default function FinanceDesktop() {
 		[openInsert]
 	);
 
+	const handleExport = useCallback(() => {
+		const html = buildFinanceReportHtml({
+			periodLabel,
+			monthView,
+			monthComparison,
+			yearView,
+			yearComparison,
+			year: selectedYear,
+		});
+		const stamp = new Date().toISOString().slice(0, 10);
+		const ok = downloadTextFile(
+			`relatorio-financeiro-${stamp}.html`,
+			html,
+			"text/html;charset=utf-8"
+		);
+		if (!ok) {
+			Alert.alert("Exportar", "Não foi possível gerar o arquivo neste dispositivo.");
+		}
+	}, [
+		periodLabel,
+		monthView,
+		monthComparison,
+		yearView,
+		yearComparison,
+		selectedYear,
+	]);
+
 	return (
 		<ScrollView
 			style={{ backgroundColor: colors.screen }}
 			contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 40 }}
 		>
 			<Box className="w-full gap-4">
-				<PageHeader colors={colors} />
+				<PageHeader colors={colors} onExport={handleExport} disabled={loading} />
 
 				{loading ? (
 					<FinanceDesktopSkeleton />
