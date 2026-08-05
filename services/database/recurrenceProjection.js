@@ -1,13 +1,12 @@
 import { Platform } from "react-native";
 import { db } from "@/services/database/db";
 import {
-	addMonthsClamped,
 	adjustForNonWorking,
 	atNoonISO,
-	buildSqlVisibilityClause,
 	getNextDueDate,
-	toISODate,
 } from "@/services/database/recurrenceService";
+import { buildSqlVisibilityClause } from "@/services/database/visibility";
+import { addMonthsClamped, toISODate } from "@/utils/date";
 
 const MAX_PROJECTION_MONTHS = 24;
 const MAX_OCCURRENCES_PER_RECURRENCE = 120;
