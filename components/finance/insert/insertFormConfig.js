@@ -1,6 +1,7 @@
 import * as yup from "yup";
 import { createNumberMask } from "react-native-mask-input";
 import { brNumber } from "@/utils/validators/yupCustom";
+import { toISODate } from "@/utils/date";
 
 export const decimalMask = createNumberMask({
 	delimiter: ".",
@@ -86,12 +87,7 @@ export function normalizeDate(value) {
 	return null;
 }
 
-export function toISODate(dateObj) {
-	const yyyy = dateObj.getFullYear();
-	const mm = String(dateObj.getMonth() + 1).padStart(2, "0");
-	const dd = String(dateObj.getDate()).padStart(2, "0");
-	return `${yyyy}-${mm}-${dd}`;
-}
+export { toISODate };
 
 export function formatDateDisplay(value) {
 	if (!value) return "Selecionar data";
