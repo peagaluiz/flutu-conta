@@ -1,6 +1,13 @@
-import { buildDashboardResumo, normalizeTransactions } from "@/utils/finance/dashboardHelpers";
+import {
+	buildDashboardResumo,
+	groupExpensesByCategory,
+	normalizeTransactions,
+} from "@/utils/finance/dashboardHelpers";
 import { getDescricao } from "@/utils/finance/getDescricao";
 import { toISODateString } from "@/utils/finance/helpers";
+import { currentMonthKey, monthKeyOf, shiftMonthKey } from "@/utils/finance/monthKey";
+
+export { currentMonthKey, monthKeyOf, shiftMonthKey };
 
 const MONTH_NAMES_LONG = [
 	"Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -17,21 +24,8 @@ const CATEGORY_PALETTE = [
 	"#0EA5E9", "#14B8A6", "#F97316", "#EC4899", "#64748B",
 ];
 
-export function monthKeyOf(date) {
-	return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
-export function currentMonthKey() {
-	return monthKeyOf(new Date());
-}
-
 export function currentYear() {
 	return new Date().getFullYear();
-}
-
-export function shiftMonthKey(monthKey, delta) {
-	const [year, month] = String(monthKey).split("-").map(Number);
-	return monthKeyOf(new Date(year, month - 1 + delta, 1));
 }
 
 // Compara um valor atual com o do período anterior, evitando divisão por zero.
@@ -89,16 +83,10 @@ function resolveCategoryMeta(nome, catalogMap, index) {
 
 // Ranking de categorias de despesa (tipo pagar) com % sobre o total gasto.
 function buildCategoryRanking(items, totalSaidas, catalogMap, top) {
-	const grouped = new Map();
-	items
-		.filter((item) => item.tipo === "pagar")
-		.forEach((item) => {
-			grouped.set(item.categoria, (grouped.get(item.categoria) || 0) + item.valor);
-		});
-
-	const sorted = Array.from(grouped.entries())
-		.map(([nome, total]) => ({ nome, total }))
-		.sort((a, b) => b.total - a.total);
+	const sorted = groupExpensesByCategory(items).map(({ categoria, total }) => ({
+		nome: categoria,
+		total,
+	}));
 
 	const limited = typeof top === "number" ? sorted.slice(0, top) : sorted;
 	const denom = totalSaidas > 0 ? totalSaidas : 1;

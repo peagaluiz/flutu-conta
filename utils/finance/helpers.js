@@ -1,3 +1,5 @@
+import { toISODate } from "@/utils/date";
+
 export function formatCurrency(value) {
 	const parsed = Number(value || 0);
 	return parsed.toLocaleString("pt-BR", {
@@ -17,18 +19,13 @@ export function formatDate(dateString) {
 	return date.toLocaleDateString("pt-BR");
 }
 
-export function toISODateString(date) {
-	const yyyy = date.getFullYear();
-	const mm = String(date.getMonth() + 1).padStart(2, "0");
-	const dd = String(date.getDate()).padStart(2, "0");
-	return `${yyyy}-${mm}-${dd}`;
-}
+export { toISODate as toISODateString };
 
 export function isRecebimentoVencido(item) {
 	if (!item) return false;
 	if (item.tipo !== "receber" || item.status === "pago") return false;
 	if (!item.data_vencimento) return false;
-	const today = toISODateString(new Date());
+	const today = toISODate(new Date());
 	return item.data_vencimento <= today;
 }
 

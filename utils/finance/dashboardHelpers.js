@@ -1,14 +1,14 @@
 import { formatCurrency } from "@/utils/finance/helpers";
+import { toISODate } from "@/utils/date";
+import {
+	buildMonthKeyList,
+	monthKeyFromISO as getMonthKey,
+} from "@/utils/finance/monthKey";
 
 function resolveTransactionDate(item) {
 	const dueDate = String(item?.data_vencimento || "").slice(0, 10);
 	if (dueDate) return dueDate;
 	return String(item?.data_transacao || "").slice(0, 10);
-}
-
-function getMonthKey(dateString) {
-	if (!dateString || dateString.length < 7) return null;
-	return dateString.slice(0, 7);
 }
 
 function getMonthLabel(monthKey) {
@@ -18,35 +18,6 @@ function getMonthLabel(monthKey) {
 	return date
 		.toLocaleDateString("pt-BR", { month: "short" })
 		.replace(".", "");
-}
-
-function monthKeyToDate(monthKey) {
-	const [year, month] = String(monthKey || "").split("-");
-	return new Date(Number(year), Number(month) - 1, 1);
-}
-
-function buildMonthKeyList(startKey, endKey) {
-	const startDate = monthKeyToDate(startKey);
-	const endDate = monthKeyToDate(endKey);
-
-	if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-		return [];
-	}
-
-	const keys = [];
-	const cursor = new Date(startDate);
-
-	while (cursor <= endDate) {
-		keys.push(
-			`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(
-				2,
-				"0"
-			)}`
-		);
-		cursor.setMonth(cursor.getMonth() + 1);
-	}
-
-	return keys;
 }
 
 export function normalizeTransactions(items = [], options = {}) {
@@ -206,13 +177,6 @@ function getISOWeekMonday(date) {
 	return d;
 }
 
-function toISODate(date) {
-	const y = date.getFullYear();
-	const m = String(date.getMonth() + 1).padStart(2, "0");
-	const d = String(date.getDate()).padStart(2, "0");
-	return `${y}-${m}-${d}`;
-}
-
 function buildSeriesMap(base, getKey, getLabel) {
 	const map = new Map();
 	base.forEach((item) => {
@@ -307,21 +271,24 @@ export function buildDailySeries(items = []) {
 	);
 }
 
-export function buildCategoryExpenses(items = [], top = 6) {
-	const base = normalizeTransactions(items).filter(
-		(item) => item.tipo === "pagar"
-	);
+// Soma as despesas (tipo pagar) por categoria, da maior para a menor.
+// Recebe itens já normalizados; cada tela monta seu próprio formato em cima disso.
+export function groupExpensesByCategory(normalizedItems = []) {
 	const grouped = new Map();
 
-	base.forEach((item) => {
-		const current = grouped.get(item.categoria) || 0;
-		grouped.set(item.categoria, current + item.valor);
-	});
+	normalizedItems
+		.filter((item) => item.tipo === "pagar")
+		.forEach((item) => {
+			grouped.set(item.categoria, (grouped.get(item.categoria) || 0) + item.valor);
+		});
 
-	const sorted = Array.from(grouped.entries())
+	return Array.from(grouped.entries())
 		.map(([categoria, total]) => ({ categoria, total }))
-		.sort((a, b) => b.total - a.total)
-		.slice(0, top);
+		.sort((a, b) => b.total - a.total);
+}
+
+export function buildCategoryExpenses(items = [], top = 6) {
+	const sorted = groupExpensesByCategory(normalizeTransactions(items)).slice(0, top);
 
 	const maxValue = sorted.reduce((acc, item) => Math.max(acc, item.total), 0);
 
