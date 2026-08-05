@@ -2,7 +2,6 @@ import { Platform } from "react-native";
 import { supabase } from "@/services/supabase/client";
 import { db, nowISO } from "@/services/database/db";
 import { ImobilizadoRow, TransacaoDatabase } from "@/services/database/types";
-import { getCurrentUserCache } from "@/services/auth/currentUserCache";
 import {
 	activateRecorrencia,
 	applyEditToRecurrenceTransacoes,
@@ -31,191 +30,21 @@ import {
 	upsertRemoteTransacaoLocally,
 } from "@/services/database/transacoesSync";
 import { createFaturaRepository } from "@/services/database/faturaRepository";
+import {
+	insertTransacaoLocal,
+	normalizeTransacaoPessoa,
+} from "@/services/database/transacoesLocalWriter";
+import {
+	applySupabaseVisibility,
+	buildSqlVisibilityClause,
+	resolveVisibilityContext,
+	type VisibilityContext,
+	type VisibilityScope,
+} from "@/services/database/visibility";
 
-type VisibilityScope = "mine" | "family" | "all";
+const buildSqliteVisibilityClause = (visibility: VisibilityContext) =>
+	buildSqlVisibilityClause("t", visibility);
 
-async function resolveVisibilityContext(params?: {
-	visibilityScope?: VisibilityScope;
-	userId?: string | null;
-	familyId?: number | null;
-}) {
-	if (params?.userId) {
-		return {
-			scope: params.visibilityScope ?? "all",
-			userId: params.userId,
-			familyId: params.familyId ?? null,
-		};
-	}
-
-	if (Platform.OS === "web") {
-		const cached = getCurrentUserCache();
-		return {
-			scope: params?.visibilityScope ?? "all",
-			userId: cached.id,
-			familyId: cached.familyId,
-		};
-	}
-
-	const { data } = await supabase.auth.getSession();
-	const user = data?.session?.user;
-
-	const metadataFamilyId = Number(
-		(user?.user_metadata?.family_id as number | string | undefined) ??
-		(user?.app_metadata?.family_id as number | string | undefined) ??
-		0
-	);
-
-	return {
-		scope: params?.visibilityScope ?? "all",
-		userId: user?.id || null,
-		familyId: Number.isFinite(metadataFamilyId) && metadataFamilyId > 0 ? metadataFamilyId : null,
-	};
-}
-
-function applySupabaseVisibility(query: any, visibility: { scope: VisibilityScope; userId: string | null; familyId: number | null }) {
-	if (!visibility.userId) return query;
-
-	if (visibility.scope === "mine") {
-		return query.eq("user_id", visibility.userId);
-	}
-
-	if (visibility.scope === "family") {
-		if (!visibility.familyId) {
-			return query.eq("user_id", visibility.userId);
-		}
-
-		return query.eq("family_id", visibility.familyId);
-	}
-
-	if (!visibility.familyId) {
-		return query.eq("user_id", visibility.userId);
-	}
-
-	return query.or(`user_id.eq.${visibility.userId},family_id.eq.${visibility.familyId}`);
-}
-
-function buildSqliteVisibilityClause(visibility: { scope: VisibilityScope; userId: string | null; familyId: number | null }) {
-	if (!visibility.userId) {
-		return { where: "1=1", args: [] as Array<string | number> };
-	}
-
-	if (visibility.scope === "mine") {
-		return { where: "t.user_id = ?", args: [visibility.userId] };
-	}
-
-	if (visibility.scope === "family") {
-		if (!visibility.familyId) {
-			return { where: "t.user_id = ?", args: [visibility.userId] };
-		}
-
-		return { where: "t.family_id = ?", args: [visibility.familyId] };
-	}
-
-	if (!visibility.familyId) {
-		return { where: "t.user_id = ?", args: [visibility.userId] };
-	}
-
-	return {
-		where: "(t.user_id = ? OR t.family_id = ?)",
-		args: [visibility.userId, visibility.familyId],
-	};
-}
-
-function normalizeTransacaoPessoa<
-	T extends {
-		pessoa?: string | null;
-		pessoa_rel?: { nome?: string | null } | null;
-		categoria?: string | null;
-		categoria_rel?: { nome?: string | null } | null;
-		family_id?: number | null;
-		is_family_shared?: number | boolean | null;
-	}
->(row: T, fallbackFamilyId?: number | null) {
-	const { pessoa_rel, categoria_rel, ...rest } = row as T & {
-		pessoa_rel?: { nome?: string | null } | null;
-		categoria_rel?: { nome?: string | null } | null;
-	};
-	const shouldFallbackFamily =
-		(rest.family_id == null || Number(rest.family_id) <= 0) &&
-		Number(rest.is_family_shared ?? 0) === 1 &&
-		Number(fallbackFamilyId ?? 0) > 0;
-
-	return {
-		...rest,
-		pessoa: pessoa_rel?.nome ?? rest.pessoa ?? null,
-		categoria: categoria_rel?.nome ?? rest.categoria ?? null,
-		family_id: shouldFallbackFamily ? Number(fallbackFamilyId) : rest.family_id ?? null,
-	};
-}
-
-async function insertTransacaoLocal(
-	data: Omit<TransacaoDatabase, "id_transacao" | "created_at" | "updated_at">
-) {
-	if (!db) throw new Error("Banco local indisponivel");
-
-	const insertResult = await db.runAsync(
-		`
-      INSERT INTO transacoes (
-        remote_id,
-        tipo,
-        valor,
-        id_categoria,
-        id_pessoa,
-        pessoa,
-        id_imobilizado,
-        id_banco,
-		family_id,
-		is_family_shared,
-		user_id,
-        data_transacao,
-        data_vencimento,
-        data_baixa,
-        status,
-        observacao,
-        json,
-        id_fatura,
-        parcela_atual,
-        parcela_total,
-        ofx_fitid,
-        created_at,
-        updated_at,
-        data_sync,
-        sync_status,
-        synced,
-        deleted
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `,
-		null,
-		data.tipo,
-		data.valor,
-		data.id_categoria ?? null,
-		data.id_pessoa ?? null,
-		data.pessoa ?? null,
-		data.id_imobilizado ?? null,
-		data.id_banco ?? null,
-		data.family_id ?? null,
-		Number(data.is_family_shared ?? 0),
-		data.user_id ?? null,
-		data.data_transacao ?? nowISO(),
-		data.data_vencimento ?? null,
-		data.data_baixa ?? null,
-		data.status ?? "pendente",
-		data.observacao ?? null,
-		data.json ?? null,
-		data.id_fatura ?? null,
-		data.parcela_atual ?? null,
-		data.parcela_total ?? null,
-		data.ofx_fitid ?? null,
-		nowISO(),
-		nowISO(),
-		null,
-		"pending",
-		0,
-		0
-	);
-
-	return { insertId: String(insertResult.lastInsertRowId), skipped: false };
-}
 
 export function createTransacoesRepository() {
 	return {

@@ -1,15 +1,13 @@
 import { Platform } from "react-native";
 import { supabase } from "@/services/supabase/client";
 import { db, nowISO } from "@/services/database/db";
-import { getCurrentUserCache } from "@/services/auth/currentUserCache";
-
-type VisibilityScope = "mine" | "family" | "all";
-
-type VisibilityParams = {
-	visibilityScope?: VisibilityScope;
-	userId?: string | null;
-	familyId?: number | null;
-};
+import {
+	applySupabaseVisibility,
+	buildSqlVisibilityClause as buildVisibilityClause,
+	resolveVisibilityContext,
+	type VisibilityContext,
+	type VisibilityParams,
+} from "@/services/database/visibility";
 
 export type BancoRow = {
 	id_banco: number;
@@ -44,65 +42,13 @@ function resolveBancoFlags(config?: CartaoConfig) {
 	return { isCorrente: isCorrente ? 1 : 0, isCartao: isCartao ? 1 : 0, diaFechamento, diaVencimento, tipo };
 }
 
-async function resolveVisibilityContext(params?: VisibilityParams) {
-	if (params?.userId) {
-		return {
-			scope: params.visibilityScope ?? "all",
-			userId: params.userId,
-			familyId: params.familyId ?? null,
-		};
-	}
+// Bancos e faturas sempre trazem os registros próprios junto com os da família,
+// inclusive no escopo "family" — daí o strictFamily: false.
+const buildSqlVisibilityClause = (prefix: string, visibility: VisibilityContext) =>
+	buildVisibilityClause(prefix, visibility, { strictFamily: false });
 
-	if (Platform.OS === "web") {
-		const cached = getCurrentUserCache();
-		return {
-			scope: params?.visibilityScope ?? "all",
-			userId: cached.id,
-			familyId: cached.familyId,
-		};
-	}
-
-	const { data } = await supabase.auth.getSession();
-	const user = data?.session?.user;
-	const metadataFamilyId = Number(
-		(user?.user_metadata?.family_id as number | string | undefined) ??
-		(user?.app_metadata?.family_id as number | string | undefined) ??
-		0
-	);
-
-	return {
-		scope: params?.visibilityScope ?? "all",
-		userId: user?.id || null,
-		familyId: Number.isFinite(metadataFamilyId) && metadataFamilyId > 0 ? metadataFamilyId : null,
-	};
-}
-
-function buildSqlVisibilityClause(
-	prefix: string,
-	visibility: { scope: VisibilityScope; userId: string | null; familyId: number | null }
-) {
-	if (!visibility.userId) {
-		return { where: "1=1", args: [] as Array<string | number> };
-	}
-	if (visibility.scope === "mine" || !visibility.familyId) {
-		return { where: `${prefix}.user_id = ?`, args: [visibility.userId] };
-	}
-	return {
-		where: `(${prefix}.user_id = ? OR ${prefix}.family_id = ?)`,
-		args: [visibility.userId, visibility.familyId],
-	};
-}
-
-function applyWebVisibility(
-	query: any,
-	visibility: { scope: VisibilityScope; userId: string | null; familyId: number | null }
-) {
-	if (!visibility.userId) return query;
-	if (visibility.scope === "mine" || !visibility.familyId) {
-		return query.eq("user_id", visibility.userId);
-	}
-	return query.or(`user_id.eq.${visibility.userId},family_id.eq.${visibility.familyId}`);
-}
+const applyWebVisibility = (query: any, visibility: VisibilityContext) =>
+	applySupabaseVisibility(query, visibility, { strictFamily: false });
 
 async function bancoExistsByName(
 	nome: string,
