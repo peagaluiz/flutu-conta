@@ -25,7 +25,7 @@ import LaunchesModals from "@/components/auth/launches/LaunchesModals";
 import LaunchesWebTabs from "./LaunchesWebTabs";
 import { getLaunchesWebColumns } from "./launchesWebColumns";
 import { getRecorrenciasWebColumns } from "./recorrenciasWebColumns";
-import { QuickFilterBar } from "./QuickFilterBar";
+import { QuickFilters } from "./QuickFilters";
 import { TableSkeleton } from "./TableSkeleton";
 import { ExpandedDetails } from "./ExpandedDetails";
 import { LaunchesWebActionModals } from "./LaunchesWebActionModals";
@@ -190,6 +190,11 @@ export default function LaunchesWebScreen() {
         [colors]
     );
 
+    const quickFilters =
+        section === "transacoes" ? (
+            <QuickFilters quickFilter={quickFilter} onChange={setQuickFilter} colors={colors} />
+        ) : null;
+
     const selectedCount = selection.selectedIds.size;
     const allHaveBaixa =
         selection.selectedItems.length > 0 &&
@@ -270,22 +275,16 @@ export default function LaunchesWebScreen() {
                             zIndex: 0,
                         }}
                     >
-                        {section === "transacoes" ? (
-                            <QuickFilterBar
-                                quickFilter={quickFilter}
-                                onChange={setQuickFilter}
-                                colors={colors}
-                            />
-                        ) : null}
                         <AnimatedHeight>
                             {loading ? (
-                                <TableSkeleton />
+                                <TableSkeleton toolbarLeft={quickFilters} colors={colors} />
                             ) : (
                                 <DataTable
                                     columns={columns}
                                     data={rows}
                                     getRowId={getRowId}
                                     colors={colors}
+                                    toolbarLeft={quickFilters}
                                     pageResetKey={`${section}|${quickFilter}|${search}`}
                                     sortResetKey={`${section}|${refreshTick}`}
                                     selectable={section === "transacoes"}

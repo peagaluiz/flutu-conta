@@ -1,9 +1,24 @@
 import { View } from "react-native";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 
-export function TableSkeleton() {
+// `toolbarLeft` mantém os filtros rápidos visíveis enquanto a tabela carrega,
+// na mesma posição em que a DataTable os renderiza.
+export function TableSkeleton({ toolbarLeft, colors }) {
     return (
         <View style={{ flex: 1 }}>
+            {toolbarLeft ? (
+                <View
+                    style={{
+                        paddingHorizontal: 16,
+                        paddingVertical: 8,
+                        borderBottomWidth: 1,
+                        borderBottomColor: colors?.border,
+                    }}
+                >
+                    {toolbarLeft}
+                </View>
+            ) : null}
+
             <Skeleton
                 style={{
                     width: "100%",

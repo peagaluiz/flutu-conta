@@ -8,17 +8,16 @@ const QUICK_FILTERS = [
     { key: "pendentes", label: "Pendentes" },
 ];
 
-export function QuickFilterBar({ quickFilter, onChange, colors }) {
+// Chips de filtro rápido. Sem moldura própria: vivem no slot esquerdo da barra
+// da DataTable, na mesma linha do contador e do seletor de itens por página.
+export function QuickFilters({ quickFilter, onChange, colors }) {
     return (
         <View
             style={{
                 flexDirection: "row",
                 alignItems: "center",
+                flexWrap: "wrap",
                 gap: 8,
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-                borderBottomWidth: 1,
-                borderBottomColor: colors.border,
             }}
         >
             {QUICK_FILTERS.map((filter) => {

@@ -19,6 +19,7 @@ import { ALL_PAGE_SIZE, PageSizeSelect } from "./PageSizeSelect";
 
 const CHECKBOX_COL_WIDTH = 44;
 const BULK_BUTTON_WIDTH = 56;
+const TOOLBAR_Z_INDEX = 20;
 
 function cellStyle(col) {
 	return {
@@ -126,6 +127,7 @@ export function DataTable({
 	defaultPageSize = 8,
 	pageSizeOptions = [8, 16, 24, ALL_PAGE_SIZE],
 	pageSizeControl = true,
+	toolbarLeft,
 	pageResetKey,
 	sortResetKey,
 	selectable = false,
@@ -220,6 +222,7 @@ export function DataTable({
 		if (selectionActive) setExpandedId(null);
 	}, [selectionActive]);
 
+	const showToolbar = pageSizeControl || !!toolbarLeft;
 	const showBulkButton = selectable && !!onOpenBulkActions;
 	const selectColWidth =
 		CHECKBOX_COL_WIDTH + (showBulkButton ? BULK_BUTTON_WIDTH : 0);
@@ -237,28 +240,37 @@ export function DataTable({
 
 	return (
 		<View style={{ width: "100%" }}>
-			{pageSizeControl ? (
+			{showToolbar ? (
 				<View
 					style={{
 						flexDirection: "row",
 						alignItems: "center",
-						justifyContent: "flex-end",
 						gap: 10,
 						paddingHorizontal: 16,
-						paddingVertical: 10,
+						paddingVertical: 8,
 						borderBottomWidth: 1,
 						borderBottomColor: colors.border,
+						// O react-native-web dá z-index 0 a toda View, então cada linha
+						// vira um contexto de empilhamento e as seguintes pintam por cima.
+						// Sem elevar a barra inteira, o menu do PageSizeSelect fica preso
+						// atrás do cabeçalho e das linhas.
+						zIndex: TOOLBAR_Z_INDEX,
 					}}
 				>
-					<Text className="text-xs" style={{ color: colors.textSecondary }}>
-						{total} resultado{total === 1 ? "" : "s"}
-					</Text>
-					<PageSizeSelect
-						value={pageSizeChoice}
-						options={pageSizeOptions}
-						colors={colors}
-						onChange={setPageSizeChoice}
-					/>
+					<View style={{ flex: 1, minWidth: 0 }}>{toolbarLeft}</View>
+					{pageSizeControl ? (
+						<>
+							<Text className="text-xs" style={{ color: colors.textSecondary }}>
+								{total} resultado{total === 1 ? "" : "s"}
+							</Text>
+							<PageSizeSelect
+								value={pageSizeChoice}
+								options={pageSizeOptions}
+								colors={colors}
+								onChange={setPageSizeChoice}
+							/>
+						</>
+					) : null}
 				</View>
 			) : null}
 
