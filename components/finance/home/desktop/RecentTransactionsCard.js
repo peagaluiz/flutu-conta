@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useTheme } from "@/components/ui/gluestack-ui-provider/ThemeProvider/ThemeProvider";
 import { getThemeColors } from "@/constants/colors";
 import { LancamentoListItem } from "@/components/finance/home/LancamentoListItem";
+import { FaturaGroupListItem } from "@/components/finance/home/FaturaGroupListItem";
 import { DesktopCard } from "./DesktopCard";
 
 export function RecentTransactionsCard({ loading, items, onPressItem, onSeeAll }) {
@@ -26,13 +27,20 @@ export function RecentTransactionsCard({ loading, items, onPressItem, onSeeAll }
 					Nenhum lançamento no período.
 				</Text>
 			) : (
-				items.map((item) => (
-					<LancamentoListItem
-						key={String(item.id_transacao ?? item.recurrence_uuid)}
-						item={item}
-						onPress={() => onPressItem(item)}
-					/>
-				))
+				items.map((item) =>
+					item.is_fatura_group ? (
+						<FaturaGroupListItem
+							key={String(item.id_transacao)}
+							group={item}
+						/>
+					) : (
+						<LancamentoListItem
+							key={String(item.id_transacao ?? item.recurrence_uuid)}
+							item={item}
+							onPress={() => onPressItem(item)}
+						/>
+					)
+				)
 			)}
 		</DesktopCard>
 	);

@@ -4,6 +4,7 @@ import { useTheme } from "@/components/ui/gluestack-ui-provider/ThemeProvider/Th
 import { getThemeColors } from "@/constants/colors";
 import { formatCurrency, formatDate } from "@/utils/finance/helpers";
 import { getDescricao } from "@/utils/finance/getDescricao";
+import { FaturaGroupListItem } from "@/components/finance/home/FaturaGroupListItem";
 import { DesktopCard } from "./DesktopCard";
 
 export function UpcomingBillsCard({ items, onPressItem }) {
@@ -18,6 +19,15 @@ export function UpcomingBillsCard({ items, onPressItem }) {
 				</Text>
 			) : (
 				items.map((item) => {
+					if (item.is_fatura_group) {
+						return (
+							<FaturaGroupListItem
+								key={String(item.id_transacao)}
+								group={item}
+								compact
+							/>
+						);
+					}
 					const isReceber = item.tipo === "receber";
 					const titulo = item.pessoa || getDescricao(item) || item.categoria || "Lançamento";
 					return (

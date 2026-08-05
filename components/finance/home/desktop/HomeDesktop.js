@@ -62,6 +62,19 @@ function computeCategoryBreakdown(periodLancamentos, colors) {
     }));
 }
 
+// Faturas agrupadas abrem as listas do desktop, mantendo entre si a ordem já aplicada.
+function faturasFirst(items) {
+    return [
+        ...items.filter((item) => item.is_fatura_group),
+        ...items.filter((item) => !item.is_fatura_group),
+    ];
+}
+
+// Grupos de fatura usam status próprio ("aberta" | "fechada" | "paga").
+function isPendente(item) {
+    return item.is_fatura_group ? item.status !== "paga" : item.status !== "pago";
+}
+
 export default function HomeDesktop() {
     const { theme } = useTheme();
     const colors = getThemeColors(theme);
@@ -114,18 +127,23 @@ export default function HomeDesktop() {
 
     const recentItems = useMemo(
         () =>
-            [...lancamentos]
-                .sort((a, b) => String(b.data_vencimento).localeCompare(String(a.data_vencimento)))
-                .slice(0, 6),
+            faturasFirst(
+                [...lancamentos].sort((a, b) =>
+                    String(b.data_vencimento).localeCompare(String(a.data_vencimento))
+                )
+            ).slice(0, 6),
         [lancamentos]
     );
 
     const upcomingItems = useMemo(
         () =>
-            lancamentos
-                .filter((item) => item.status !== "pago")
-                .sort((a, b) => String(a.data_vencimento).localeCompare(String(b.data_vencimento)))
-                .slice(0, 4),
+            faturasFirst(
+                lancamentos
+                    .filter(isPendente)
+                    .sort((a, b) =>
+                        String(a.data_vencimento).localeCompare(String(b.data_vencimento))
+                    )
+            ).slice(0, 4),
         [lancamentos]
     );
 
