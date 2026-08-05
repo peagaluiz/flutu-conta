@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Easing, Pressable, ScrollView, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { ScrollView, View } from "react-native";
+import { Alert } from "@/utils/alert";
 import { useAuth } from "@/state/AuthContext";
 import { useInsertSavedTick } from "@/state/InsertModalContext";
 
@@ -8,8 +9,8 @@ import { getThemeColors } from "@/constants/colors";
 import { useDatabase } from "@/hooks/useDatabase";
 import { Text } from "@/components/ui/text";
 import { DataTable } from "@/components/ui/data-table";
-import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { Box } from "@/components/ui/box";
+import { AnimatedHeight } from "@/components/ui/AnimatedHeight";
 
 import { getDescricao } from "@/utils/finance/getDescricao";
 import { getSectionConfig } from "@/utils/auth/launches/sections";
@@ -20,11 +21,17 @@ import { useLaunchesEditor } from "@/components/auth/launches/useLaunchesEditor"
 import { useLaunchesFilters } from "@/components/auth/launches/useLaunchesFilters";
 import { useLaunchesSelection } from "@/components/auth/launches/useLaunchesSelection";
 import LaunchesModals from "@/components/auth/launches/LaunchesModals";
-import { LaunchesBulkActions } from "@/components/auth/launches/LaunchesBulkActions";
 
 import LaunchesWebTabs from "./LaunchesWebTabs";
 import { getLaunchesWebColumns } from "./launchesWebColumns";
 import { getRecorrenciasWebColumns } from "./recorrenciasWebColumns";
+import { QuickFilterBar } from "./QuickFilterBar";
+import { TableSkeleton } from "./TableSkeleton";
+import { ExpandedObservacao } from "./ExpandedObservacao";
+import { LaunchesWebActionModals } from "./LaunchesWebActionModals";
+import { useRecorrenciasWeb } from "./useRecorrenciasWeb";
+
+export { TableSkeleton };
 
 const EMPTY_TEXTS = {
     transacoes: "Nenhum lançamento encontrado.",
@@ -45,173 +52,6 @@ function defaultRowOrder(a, b) {
     return Number(b.valor || 0) - Number(a.valor || 0);
 }
 
-const QUICK_FILTERS = [
-    { key: "todos", label: "Todos" },
-    { key: "pagar", label: "A pagar" },
-    { key: "receber", label: "A receber" },
-    { key: "pendentes", label: "Pendentes" },
-];
-
-function QuickFilterBar({ quickFilter, onChange, count, colors }) {
-    return (
-        <View
-            style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 8,
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-                borderBottomWidth: 1,
-                borderBottomColor: colors.border,
-            }}
-        >
-            {QUICK_FILTERS.map((filter) => {
-                const active = quickFilter === filter.key;
-                return (
-                    <Pressable
-                        key={filter.key}
-                        onPress={() => onChange(filter.key)}
-                        style={({ hovered }) => ({
-                            height: 30,
-                            borderRadius: 8,
-                            paddingHorizontal: 12,
-                            alignItems: "center",
-                            justifyContent: "center",
-                            borderWidth: 1,
-                            borderColor: active ? colors.textPrimary : colors.border,
-                            backgroundColor: active
-                                ? colors.textPrimary
-                                : hovered
-                                    ? colors.surfaceMuted
-                                    : "transparent",
-                        })}
-                    >
-                        <Text
-                            className="text-xs font-medium"
-                            style={{ color: active ? colors.surface : colors.textSecondary }}
-                        >
-                            {filter.label}
-                        </Text>
-                    </Pressable>
-                );
-            })}
-            <View style={{ flex: 1 }} />
-            <Text className="text-xs" style={{ color: colors.textSecondary }}>
-                {count} resultado{count === 1 ? "" : "s"}
-            </Text>
-        </View>
-    );
-}
-
-export function TableSkeleton() {
-    return (
-        <View style={{ flex: 1 }}>
-            <Skeleton
-                style={{
-                    width: "100%",
-                    height: 42,
-                    borderRadius: 0,
-                }}
-            />
-
-            <View style={{ paddingHorizontal: 8 }}>
-                <View
-                    style={{
-                        height: 52,
-                        justifyContent: "center",
-                    }}
-                >
-                    <SkeletonText
-                        _lines={1}
-                        style={{
-                            width: "100%",
-                            height: 16,
-                            borderRadius: 4,
-                        }}
-                    />
-                </View>
-
-                <View
-                    style={{
-                        height: 52,
-                        flexDirection: "row",
-                        alignItems: "center",
-                    }}
-                >
-                    <View style={{ flex: 2, paddingRight: 6 }}>
-                        <SkeletonText
-                            _lines={1}
-                            style={{
-                                width: "100%",
-                                height: 16,
-                                borderRadius: 4,
-                            }}
-                        />
-                    </View>
-
-                    <View style={{ flex: 1, paddingLeft: 6 }}>
-                        <SkeletonText
-                            _lines={1}
-                            style={{
-                                width: "100%",
-                                height: 16,
-                                borderRadius: 4,
-                            }}
-                        />
-                    </View>
-                </View>
-            </View>
-
-            <Skeleton
-                style={{
-                    width: "100%",
-                    height: 43,
-                    marginTop: 8,
-                    borderRadius: 0,
-                }}
-            />
-        </View>
-    );
-}
-
-function AnimatedHeight({ children, duration = 280 }) {
-    const heightAnim = useRef(new Animated.Value(0)).current;
-    const currentHeight = useRef(0);
-    const measured = useRef(false);
-    const [ready, setReady] = useState(false);
-
-    const onLayout = useCallback(
-        (e) => {
-            const h = e.nativeEvent.layout.height;
-            if (!h || h === currentHeight.current) return;
-            const grew = measured.current && h > currentHeight.current;
-            currentHeight.current = h;
-            if (grew) {
-                Animated.timing(heightAnim, {
-                    toValue: h,
-                    duration,
-                    easing: Easing.out(Easing.cubic),
-                    useNativeDriver: false,
-                }).start();
-            } else {
-                // Encolher (ex.: entrar no skeleton) é instantâneo
-                heightAnim.setValue(h);
-                if (!measured.current) {
-                    measured.current = true;
-                    setReady(true);
-                }
-            }
-        },
-        [heightAnim, duration]
-    );
-
-    return (
-        <Animated.View style={{ height: ready ? heightAnim : undefined, overflow: "hidden" }}>
-            <View onLayout={onLayout}>{children}</View>
-        </Animated.View>
-    );
-}
-
 export default function LaunchesWebScreen() {
     const { theme } = useTheme();
     const colors = getThemeColors(theme);
@@ -222,6 +62,9 @@ export default function LaunchesWebScreen() {
     const [quickFilter, setQuickFilter] = useState("todos");
     const [search, setSearch] = useState("");
     const [ofxModalOpen, setOfxModalOpen] = useState(false);
+    const [bulkActionsOpen, setBulkActionsOpen] = useState(false);
+    const [viewItem, setViewItem] = useState(null);
+    const [refreshTick, setRefreshTick] = useState(0);
 
     const {
         activeFilters,
@@ -310,6 +153,7 @@ export default function LaunchesWebScreen() {
                 onEdit: editor.openEdit,
                 onDelete: deleteItem,
                 onSyncPessoa: syncPessoa,
+                onView: setViewItem,
             }),
         [section, colors, darBaixa, editor.openEdit, deleteItem, syncPessoa]
     );
@@ -331,47 +175,52 @@ export default function LaunchesWebScreen() {
         [selection.selectedIds, selection.handleToggleSelect]
     );
 
-    const [refreshTick, setRefreshTick] = useState(0);
+    const renderExpandedRow = useCallback(
+        (item) => <ExpandedObservacao text={getDescricao(item)} colors={colors} />,
+        [colors]
+    );
+
+    const selectedCount = selection.selectedIds.size;
+    const allHaveBaixa =
+        selection.selectedItems.length > 0 &&
+        selection.selectedItems.every((item) => !!item.data_baixa);
+
+    const closeBulkActions = useCallback(() => setBulkActionsOpen(false), []);
+
+    const handleBulkBaixaPress = useCallback(() => {
+        closeBulkActions();
+        if (allHaveBaixa) selection.handleBulkRemoverBaixa();
+        else selection.setBaixaDateModalOpen(true);
+    }, [allHaveBaixa, closeBulkActions, selection.handleBulkRemoverBaixa, selection.setBaixaDateModalOpen]);
+
+    const handleBulkDeletePress = useCallback(() => {
+        closeBulkActions();
+        Alert.alert("Excluir", `Deseja excluir ${selectedCount} item(s)?`, [
+            { text: "Cancelar", style: "cancel" },
+            { text: "Excluir", style: "destructive", onPress: selection.handleBulkDelete },
+        ]);
+    }, [closeBulkActions, selectedCount, selection.handleBulkDelete]);
+
+    const handleClearSelection = useCallback(() => {
+        closeBulkActions();
+        selection.clearSelection();
+    }, [closeBulkActions, selection.clearSelection]);
+
     const handleRefresh = useCallback(() => {
         invalidateRecurrenceReadModel();
         setRefreshTick((tick) => tick + 1);
         onRefresh();
     }, [onRefresh]);
 
-    // Segunda tabela "Recorrentes" (só leitura) abaixo das transações no web.
-    const [recorrencias, setRecorrencias] = useState([]);
-    const [recorrenciasLoading, setRecorrenciasLoading] = useState(false);
     const recorrenciasColumns = useMemo(() => getRecorrenciasWebColumns(colors), [colors]);
-    // Só mostra skeleton ao (re)entrar na aba; refreshes por savedTick/refreshTick
-    // atualizam a lista silenciosamente.
-    const recSkeletonSectionRef = useRef(null);
-
-    useEffect(() => {
-		if (section !== "transacoes" || !familyReady || !userData?.id) return;
-        let active = true;
-        if (recSkeletonSectionRef.current !== section) {
-            recSkeletonSectionRef.current = section;
-            setRecorrenciasLoading(true);
-        }
-        database
-            .listRecorrencias({
-                userId: userData?.id ?? null,
-                familyId: family?.id ?? null,
-                visibilityScope: family?.id ? "all" : "mine",
-            })
-            .then((rows) => {
-                if (active) setRecorrencias(Array.isArray(rows) ? rows : []);
-            })
-            .catch(() => {
-                if (active) setRecorrencias([]);
-            })
-            .finally(() => {
-                if (active) setRecorrenciasLoading(false);
-            });
-        return () => {
-            active = false;
-        };
-	}, [section, database, userData?.id, family?.id, familyReady, savedTick, refreshTick]);
+    const { recorrencias, loading: recorrenciasLoading } = useRecorrenciasWeb({
+        database,
+        section,
+        userData,
+        family,
+        familyReady,
+        reloadKey: `${savedTick}|${refreshTick}`,
+    });
 
     return (
         <View style={{ flex: 1, backgroundColor: colors.screen }}>
@@ -401,18 +250,6 @@ export default function LaunchesWebScreen() {
                         onCreate={editor.openCreate}
                     />
 
-                    {selection.selectionMode && section === "transacoes" ? (
-                        <LaunchesBulkActions
-                            selectedIds={selection.selectedIds}
-                            selectedItems={selection.selectedItems}
-                            colors={colors}
-                            onDelete={selection.handleBulkDelete}
-                            onDarBaixa={() => selection.setBaixaDateModalOpen(true)}
-                            onRemoverBaixa={selection.handleBulkRemoverBaixa}
-                            onClear={selection.clearSelection}
-                        />
-                    ) : null}
-
                     <Box
                         className="flex-1 rounded-xl border overflow-hidden"
                         style={{
@@ -427,7 +264,6 @@ export default function LaunchesWebScreen() {
                             <QuickFilterBar
                                 quickFilter={quickFilter}
                                 onChange={setQuickFilter}
-                                count={rows.length}
                                 colors={colors}
                             />
                         ) : null}
@@ -440,7 +276,6 @@ export default function LaunchesWebScreen() {
                                     data={rows}
                                     getRowId={getRowId}
                                     colors={colors}
-                                    pageSize={8}
                                     pageResetKey={`${section}|${quickFilter}|${search}`}
                                     sortResetKey={`${section}|${refreshTick}`}
                                     selectable={section === "transacoes"}
@@ -448,6 +283,13 @@ export default function LaunchesWebScreen() {
                                     isRowSelectable={isRowSelectable}
                                     onToggleRow={selection.handleToggleSelect}
                                     onTogglePage={handleTogglePage}
+                                    onOpenBulkActions={
+                                        section === "transacoes"
+                                            ? () => setBulkActionsOpen(true)
+                                            : undefined
+                                    }
+                                    expandable={section === "transacoes"}
+                                    renderExpanded={renderExpandedRow}
                                     highlightId={section === "transacoes" ? localHighlightId : null}
                                     onEndReached={handleLoadMore}
                                     loadingMore={loadingMore}
@@ -486,9 +328,9 @@ export default function LaunchesWebScreen() {
                                         data={recorrencias}
                                         getRowId={(item) => item.id_recurrencia}
                                         colors={colors}
-                                        pageSize={8}
                                         pageResetKey="recorrencias"
                                         sortResetKey={`recorrencias|${refreshTick}`}
+                                        pageSizeControl={false}
                                         selectable={false}
                                         emptyText="Nenhuma recorrência."
                                     />
@@ -498,6 +340,19 @@ export default function LaunchesWebScreen() {
                     ) : null}
                 </Box>
             </ScrollView>
+
+            <LaunchesWebActionModals
+                colors={colors}
+                bulkOpen={bulkActionsOpen}
+                onCloseBulk={closeBulkActions}
+                selectedCount={selectedCount}
+                allHaveBaixa={allHaveBaixa}
+                onBaixa={handleBulkBaixaPress}
+                onDelete={handleBulkDeletePress}
+                onClearSelection={handleClearSelection}
+                viewItem={viewItem}
+                onCloseView={() => setViewItem(null)}
+            />
 
             <LaunchesModals
                 editor={editor}

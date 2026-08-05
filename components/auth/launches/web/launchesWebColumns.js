@@ -3,6 +3,7 @@ import {
 	ArrowDownCircle,
 	ArrowUpCircle,
 	CheckCircle,
+	Eye,
 	Pencil,
 	RefreshCw,
 	Trash2,
@@ -95,7 +96,7 @@ function PrimaryCell({ children, colors }) {
 	);
 }
 
-function transacoesWebColumns({ colors, onDarBaixa, onEdit, onDelete }) {
+function transacoesWebColumns({ colors, onDarBaixa, onEdit, onDelete, onView }) {
 	return [
 		{
 			key: "data",
@@ -189,7 +190,7 @@ function transacoesWebColumns({ colors, onDarBaixa, onEdit, onDelete }) {
 		{
 			key: "acoes",
 			label: "Ações",
-			width: 128,
+			width: 164,
 			align: "right",
 			// Previstas (fantasmas de recorrência) são display-only no web — editar/dar baixa
 			// só no app. Mostra um traço no lugar das ações.
@@ -203,6 +204,7 @@ function transacoesWebColumns({ colors, onDarBaixa, onEdit, onDelete }) {
 					</Text>
 				) : (
 					<ActionsCell>
+						<IconAction icon={Eye} onPress={() => onView(item)} colors={colors} />
 						<IconAction
 							icon={item.status === "pago" ? XCircle : CheckCircle}
 							onPress={() => onDarBaixa(item)}

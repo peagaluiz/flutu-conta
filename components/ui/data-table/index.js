@@ -7,9 +7,11 @@ import {
 	Check,
 	ChevronLeft,
 	ChevronRight,
+	ListChecks,
 	Minus,
 } from "lucide-react-native";
 import { Text } from "@/components/ui/text";
+import { ALL_PAGE_SIZE, PageSizeSelect } from "./PageSizeSelect";
 
 // Tabela de dados genérica para desktop web: ordenação por coluna,
 // seleção múltipla (linha + página) e paginação client-side.
@@ -81,12 +83,39 @@ function PageButton({ icon: Icon, disabled, colors, onPress }) {
 	);
 }
 
+function BulkActionsButton({ count, colors, onPress }) {
+	return (
+		<Pressable
+			onPress={onPress}
+			hitSlop={4}
+			style={({ hovered }) => ({
+				flexDirection: "row",
+				alignItems: "center",
+				gap: 5,
+				height: 26,
+				paddingHorizontal: 8,
+				borderRadius: 8,
+				borderWidth: 1,
+				borderColor: colors.brand,
+				backgroundColor: hovered ? colors.surface : "transparent",
+			})}
+		>
+			<ListChecks size={14} color={colors.brand} />
+			<Text className="text-xs font-semibold" style={{ color: colors.brand }}>
+				{count}
+			</Text>
+		</Pressable>
+	);
+}
+
 export function DataTable({
 	columns,
 	data,
 	getRowId,
 	colors,
-	pageSize = 8,
+	defaultPageSize = 8,
+	pageSizeOptions = [8, 16, 24, ALL_PAGE_SIZE],
+	pageSizeControl = true,
 	pageResetKey,
 	sortResetKey,
 	selectable = false,
@@ -94,6 +123,9 @@ export function DataTable({
 	isRowSelectable,
 	onToggleRow,
 	onTogglePage,
+	onOpenBulkActions,
+	expandable = false,
+	renderExpanded,
 	highlightId,
 	onEndReached,
 	loadingMore = false,
@@ -101,6 +133,8 @@ export function DataTable({
 }) {
 	const [sort, setSort] = useState(null);
 	const [page, setPage] = useState(1);
+	const [pageSizeChoice, setPageSizeChoice] = useState(defaultPageSize);
+	const [expandedId, setExpandedId] = useState(null);
 
 	const sorted = useMemo(() => {
 		if (!sort) return data;
@@ -112,19 +146,27 @@ export function DataTable({
 	}, [data, sort, columns]);
 
 	const total = sorted.length;
+	const pageSize =
+		pageSizeChoice === ALL_PAGE_SIZE ? Math.max(total, 1) : Number(pageSizeChoice);
 	const totalPages = Math.max(1, Math.ceil(total / pageSize));
 	const pageStart = (page - 1) * pageSize;
 	const pageRows = sorted.slice(pageStart, pageStart + pageSize);
 
 	useEffect(() => {
 		setPage(1);
+		setExpandedId(null);
 	}, [pageResetKey]);
 
 	// Volta à ordenação padrão (ordem dos dados recebidos) quando o pai pedir
 	useEffect(() => {
 		setSort(null);
 		setPage(1);
+		setExpandedId(null);
 	}, [sortResetKey]);
+
+	useEffect(() => {
+		setPage(1);
+	}, [pageSizeChoice]);
 
 	useEffect(() => {
 		if (page > totalPages) setPage(totalPages);
@@ -162,8 +204,61 @@ export function DataTable({
 		selectablePageRows.length > 0 && selectedOnPage === selectablePageRows.length;
 	const selectionActive = selectable && (selectedIds?.size ?? 0) > 0;
 
+	// Seleção e expansão não convivem: ao entrar em modo seleção, fecha a linha aberta.
+	useEffect(() => {
+		if (selectionActive) setExpandedId(null);
+	}, [selectionActive]);
+
+	const showBulkButton = selectionActive && !!onOpenBulkActions;
+	const showToolbar = pageSizeControl || showBulkButton;
+
+	const handleRowPress = useCallback(
+		(item, id, rowSelectable) => {
+			if (selectionActive) {
+				if (rowSelectable) onToggleRow?.(item);
+				return;
+			}
+			if (expandable) setExpandedId((prev) => (String(prev) === String(id) ? null : id));
+		},
+		[selectionActive, expandable, onToggleRow]
+	);
+
 	return (
 		<View style={{ width: "100%" }}>
+			{showToolbar ? (
+				<View
+					style={{
+						flexDirection: "row",
+						alignItems: "center",
+						gap: 10,
+						paddingHorizontal: 16,
+						paddingVertical: 10,
+						borderBottomWidth: 1,
+						borderBottomColor: colors.border,
+					}}
+				>
+					<Text className="text-xs" style={{ color: colors.textSecondary }}>
+						{total} resultado{total === 1 ? "" : "s"}
+					</Text>
+					{showBulkButton ? (
+						<BulkActionsButton
+							count={selectedIds.size}
+							colors={colors}
+							onPress={onOpenBulkActions}
+						/>
+					) : null}
+					<View style={{ flex: 1 }} />
+					{pageSizeControl ? (
+						<PageSizeSelect
+							value={pageSizeChoice}
+							options={pageSizeOptions}
+							colors={colors}
+							onChange={setPageSizeChoice}
+						/>
+					) : null}
+				</View>
+			) : null}
+
 			<View
 				style={{
 					flexDirection: "row",
@@ -253,42 +348,55 @@ export function DataTable({
 					const isSelected = selectable && !!selectedIds?.has(id);
 					const isHighlighted =
 						highlightId != null && String(highlightId) === String(id);
+					const isExpanded = expandable && String(expandedId) === String(id);
 					return (
-						<Pressable
-							key={String(id)}
-							disabled={!(rowSelectable && selectionActive)}
-							onPress={() => onToggleRow?.(item)}
-							style={({ hovered }) => ({
-								flexDirection: "row",
-								alignItems: "center",
-								minHeight: 52,
-								paddingHorizontal: 8,
-								borderTopWidth: index === 0 ? 0 : 1,
-								borderTopColor: colors.border,
-								backgroundColor:
-									isSelected || isHighlighted || hovered
-										? colors.surfaceMuted
-										: "transparent",
-							})}
-						>
-							{selectable ? (
+						<React.Fragment key={String(id)}>
+							<Pressable
+								disabled={!(rowSelectable && selectionActive) && !expandable}
+								onPress={() => handleRowPress(item, id, rowSelectable)}
+								style={({ hovered }) => ({
+									flexDirection: "row",
+									alignItems: "center",
+									minHeight: 52,
+									paddingHorizontal: 8,
+									borderTopWidth: index === 0 ? 0 : 1,
+									borderTopColor: colors.border,
+									backgroundColor:
+										isSelected || isHighlighted || isExpanded || hovered
+											? colors.surfaceMuted
+											: "transparent",
+								})}
+							>
+								{selectable ? (
+									<View
+										style={{ width: 44, alignItems: "center", justifyContent: "center" }}
+									>
+										<Checkbox
+											checked={isSelected}
+											disabled={!rowSelectable}
+											colors={colors}
+											onPress={() => onToggleRow?.(item)}
+										/>
+									</View>
+								) : null}
+								{columns.map((col) => (
+									<View key={col.key} style={cellStyle(col)}>
+										{col.render(item)}
+									</View>
+								))}
+							</Pressable>
+							{isExpanded ? (
 								<View
-									style={{ width: 44, alignItems: "center", justifyContent: "center" }}
+									style={{
+										paddingHorizontal: 16,
+										paddingBottom: 12,
+										backgroundColor: colors.surfaceMuted,
+									}}
 								>
-									<Checkbox
-										checked={isSelected}
-										disabled={!rowSelectable}
-										colors={colors}
-										onPress={() => onToggleRow?.(item)}
-									/>
+									{renderExpanded?.(item)}
 								</View>
 							) : null}
-							{columns.map((col) => (
-								<View key={col.key} style={cellStyle(col)}>
-									{col.render(item)}
-								</View>
-							))}
-						</Pressable>
+						</React.Fragment>
 					);
 				})
 			)}
